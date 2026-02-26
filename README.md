@@ -3,7 +3,7 @@ This project is for student use
 
 Proyecto: Telecom FieldOps Suite
 
-URL Web: (pendiente)
+URL Web: https://telecom-fieldops-capstone.vercel.app/
 URL API: (pendiente)
 Swagger/OpenAPI: `apps/api/src/openapi/openapi.yaml`
 
