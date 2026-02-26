@@ -1,0 +1,30 @@
+[
+  {
+    "id": "PROD-001",
+    "name": "Router Wi-Fi 6 Dual Band",
+    "category": "ROUTER",
+    "description": "Equipo de instalacion para internet residencial",
+    "isSerialized": true
+  },
+  {
+    "id": "SERV-002",
+    "name": "Plan Movil 20GB + Minutos Ilimitados",
+    "category": "PLAN_MOVIL",
+    "description": "Servicio de data y voz para usuarios finales",
+    "isSerialized": false
+  },
+  {
+    "id": "PROD-003",
+    "name": "SIM Card 4G/5G",
+    "category": "SIM",
+    "description": "Tarjeta SIM para activacion de lineas nuevas",
+    "isSerialized": true
+  },
+  {
+    "id": "PROD-004",
+    "name": "Laptop Corporativa Pro",
+    "category": "LAPTOP",
+    "description": "Equipo para venta empresarial",
+    "isSerialized": true
+  }
+]
