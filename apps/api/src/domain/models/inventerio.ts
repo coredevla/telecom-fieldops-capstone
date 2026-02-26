@@ -1,11 +1,11 @@
 
 
-export type TipoItem ="producto" |  "servicio" 
+export type TipoItem ="product" |  "service" 
 
 export interface Inventario {
     id: string;
     sucursalId: string;
     itemId: string;
-    tipo: TipoItem;
-    cantidad: number;
+    type: TipoItem;
+    amount: number;
 }

@@ -1,26 +1,10 @@
-import React, { useState } from "react";
+import React from "react";
 import Inventario from "./components/Inventario";
 
-const App: React.FC = () => {
-  const [sucursalId, setSucursalId] = useState("1");
-
+function App() {
   return (
-    <div className="p-6 font-sans bg-gray-100 min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">RF-06 - Inventario por sucursal</h1>
-
-      <label className="block mb-4">
-        Seleccionar sucursal:{" "}
-        <select
-          value={sucursalId}
-          onChange={(e) => setSucursalId(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1"
-        >
-          <option value="1">Centro</option>
-          <option value="2">Norte</option>
-        </select>
-      </label>
-
-      <Inventario sucursalId={sucursalId} />
+    <div className="App">
+      <Inventario />
     </div>
   );
 };

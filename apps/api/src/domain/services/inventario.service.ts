@@ -6,21 +6,21 @@ export const obtenerInventarioPorSucursal = (sucursalId: string) => {
   const items = findBySucursalId(sucursalId);
 
   return items.map(item => {
-    if (item.tipo === "producto") {
+    if (item.type === "product") {
       const producto = productos.find(p => p.id === item.itemId);
       return {
         tipo: "producto",
         nombre: producto?.nombre,
-        cantidad: item.cantidad
+        cantidad: item.amount
       };
     }
 
-    if (item.tipo === "servicio") {
+    if (item.type === "service") {
       const servicio = servicios.find(s => s.id === item.itemId);
       return {
         tipo: "servicio",
         nombre: servicio?.nombre,
-        cantidad: item.cantidad
+        cantidad: item.amount
       };
     }
   });

@@ -19,7 +19,7 @@ export const servicios = [
 ];
 
 export const inventario: Inventario[] = [
-  { id: "i1", sucursalId: "1", itemId: "p1", tipo: "producto", cantidad: 10 },
-  { id: "i2", sucursalId: "1", itemId: "s1", tipo: "servicio", cantidad: 999 },
-  { id: "i3", sucursalId: "2", itemId: "p2", tipo: "producto", cantidad: 5 }
+  { id: "i1", sucursalId: "1", itemId: "p1", type: "product", amount: 10 },
+  { id: "i2", sucursalId: "1", itemId: "s1", type: "service", amount: 999 },
+  { id: "i3", sucursalId: "2", itemId: "p2", type: "product", amount: 5 }
 ];
