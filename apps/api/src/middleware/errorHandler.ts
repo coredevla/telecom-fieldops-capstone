@@ -1,98 +1,110 @@
-import type { NextFunction, Request, Response } from "express";
-import { logger, baseReqLog } from "../infra/logger/logger";
+import type { NextFunction, Request, Response } from 'express';
+import { ApiError } from '../domain/errors/apiError';
+import type { ProblemDetails } from '../domain/models/types';
+import { logger, baseReqLog } from '../infra/logger/logger';
 
-export type ProblemDetails = {
-  type: string;
-  title: string;
-  status: number;
-  detail: string;
-  instance: string;
-  correlationId: string;
-  errors?: Record<string, string[]>;
-};
-
-function getCorrelationId(req: Request): string {
-  return ((req as any).correlationId as string) || "c_unknown";
-}
-
-function sendProblem(res: Response, problem: ProblemDetails) {
-  res.status(problem.status).json(problem);
-}
-
-// Custom application error class for known error scenarios
 export class AppError extends Error {
-  status: number;
-  type: string;
-  errors?: Record<string, string[]>;
-  constructor(params: { status: number; title: string; detail: string; type?: string; errors?: Record<string, string[]> }) {
+  public readonly status: number;
+  public readonly type: string;
+  public readonly errors?: Record<string, string[]>;
+
+  constructor(params: {
+    status: number;
+    title: string;
+    detail: string;
+    type?: string;
+    errors?: Record<string, string[]>;
+  }) {
     super(params.detail);
-    this.name = "AppError";
+    this.name = 'AppError';
     this.status = params.status;
-    this.type = params.type ?? "urn:telecom:error:app";
+    this.type = params.type ?? 'urn:telecom:error:app';
     this.errors = params.errors;
   }
 }
 
-export function errorHandler() {
-  return (err: any, req: Request, res: Response, _next: NextFunction) => {
-    const correlationId = getCorrelationId(req);
+const toInternalProblem = (req: Request): ProblemDetails => ({
+  type: 'urn:telecom:error:internal',
+  title: 'Internal Server Error',
+  status: 500,
+  detail: 'Unexpected error.',
+  instance: req.originalUrl || req.path,
+  correlationId: req.correlationId ?? 'c_unknown',
+});
 
-    // If headers already sent, delegate to default express handler
-    if (res.headersSent) return;
-
-    // Known business/app errors
-    if (err instanceof AppError) {
-      logger.warn(
-        { ...baseReqLog(req), status: err.status, type: err.type, errors: err.errors },
-        "Handled AppError"
-      );
-
-      return sendProblem(res, {
-        type: err.type,
-        title: "Request failed",
-        status: err.status,
-        detail: err.message,
-        instance: req.originalUrl || req.url,
-        correlationId,
-        errors: err.errors,
-      });
-    }
-
-    // Zod validation error support (if you use zod)
-    if (err?.name === "ZodError") {
-      const fieldErrors: Record<string, string[]> = {};
-      for (const issue of err.issues ?? []) {
-        const key = (issue.path ?? []).join(".") || "body";
-        fieldErrors[key] = fieldErrors[key] || [];
-        fieldErrors[key].push(issue.message);
-      }
-
-      logger.warn({ ...baseReqLog(req), status: 400, errors: fieldErrors }, "Validation error (Zod)");
-
-      return sendProblem(res, {
-        type: "urn:telecom:error:validation",
-        title: "Validation error",
-        status: 400,
-        detail: "Invalid request payload.",
-        instance: req.originalUrl || req.url,
-        correlationId,
-        errors: fieldErrors,
-      });
-    }
-
-
-    logger.error(
-      { ...baseReqLog(req), errName: err?.name, errMessage: err?.message, stack: err?.stack },
-      "Unhandled error"
-    );
-
-    return sendProblem(res, {
-      type: "urn:telecom:error:internal",
-      title: "Internal Server Error",
-      status: 500,
-      detail: "An unexpected error occurred.",
-      instance: req.originalUrl || req.url,
-      correlationId,
-    });
+export const notFoundHandler = (req: Request, res: Response): void => {
+  const body: ProblemDetails = {
+    type: 'urn:telecom:error:not-found',
+    title: 'Not Found',
+    status: 404,
+    detail: 'Resource not found.',
+    instance: req.originalUrl || req.path,
+    correlationId: req.correlationId ?? 'c_unknown',
   };
-}
+
+  res.status(404).json(body);
+};
+
+const normalizeProblem = (req: Request, status: number, title: string, detail: string, type: string) => ({
+  type,
+  title,
+  status,
+  detail,
+  instance: req.originalUrl || req.path,
+  correlationId: req.correlationId ?? 'c_unknown',
+});
+
+const coreErrorHandler = (error: unknown, req: Request, res: Response, _next: NextFunction): void => {
+  if (res.headersSent) {
+    return;
+  }
+
+  if (error instanceof ApiError) {
+    res.status(error.status).json(error.toProblemDetails(req.originalUrl || req.path, req.correlationId));
+    return;
+  }
+
+  if (error instanceof AppError) {
+    res.status(error.status).json({
+      ...normalizeProblem(req, error.status, 'Request failed', error.message, error.type),
+      ...(error.errors ? { errors: error.errors } : {}),
+    });
+    return;
+  }
+
+  if ((error as { name?: string })?.name === 'ZodError') {
+    const issues = (error as { issues?: Array<{ path: (string | number)[]; message: string }> }).issues ?? [];
+    const fieldErrors: Record<string, string[]> = {};
+
+    for (const issue of issues) {
+      const key = issue.path.length > 0 ? issue.path.join('.') : 'body';
+      fieldErrors[key] = [...(fieldErrors[key] ?? []), issue.message];
+    }
+
+    res.status(400).json({
+      ...normalizeProblem(
+        req,
+        400,
+        'Validation Error',
+        'Request validation failed.',
+        'urn:telecom:error:validation',
+      ),
+      errors: fieldErrors,
+    });
+    return;
+  }
+
+  logger.error(
+    {
+      ...baseReqLog(req),
+      correlationId: req.correlationId,
+      action: 'UNHANDLED_ERROR',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    },
+    'Unhandled error',
+  );
+
+  res.status(500).json(toInternalProblem(req));
+};
+
+export const errorHandler = () => coreErrorHandler;

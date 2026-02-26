@@ -1,40 +1,62 @@
-import type { Request } from "express";
+import type { Request } from 'express';
+import type { LoggerContext } from '../../domain/models/types';
 
-type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-function safeJson(value: unknown) {
+const safeSerialize = (value: unknown): string => {
   try {
     return JSON.stringify(value);
   } catch {
-    return "\"<unserializable>\"";
+    return JSON.stringify({ level: 'error', message: 'Failed to serialize log payload' });
   }
-}
+};
 
-function nowIso() {
-  return new Date().toISOString();
-}
+const normalizeArgs = (
+  arg1: string | Record<string, unknown>,
+  arg2?: LoggerContext | string,
+): { message: string; context: Record<string, unknown> } => {
+  if (typeof arg1 === 'string') {
+    return { message: arg1, context: (arg2 as LoggerContext | undefined) ?? {} };
+  }
 
-function log(level: LogLevel, data: Record<string, unknown>, message: string) {
+  return {
+    message: typeof arg2 === 'string' ? arg2 : 'log',
+    context: arg1,
+  };
+};
 
+const emit = (level: LogLevel, arg1: string | Record<string, unknown>, arg2?: LoggerContext | string): void => {
+  const { message, context } = normalizeArgs(arg1, arg2);
   const payload = {
-    ts: nowIso(),
     level,
-    msg: message,
-    ...data,
+    message,
+    at: new Date().toISOString(),
+    ...context,
   };
 
-  console[level === "debug" ? "log" : level](safeJson(payload));
-}
+  const serialized = safeSerialize(payload);
+
+  if (level === 'error') {
+    console.error(serialized);
+    return;
+  }
+
+  console.log(serialized);
+};
 
 export const logger = {
-  debug: (data: Record<string, unknown>, message: string) => log("debug", data, message),
-  info: (data: Record<string, unknown>, message: string) => log("info", data, message),
-  warn: (data: Record<string, unknown>, message: string) => log("warn", data, message),
-  error: (data: Record<string, unknown>, message: string) => log("error", data, message),
+  debug: (arg1: string | Record<string, unknown>, arg2?: LoggerContext | string): void =>
+    emit('debug', arg1, arg2),
+  info: (arg1: string | Record<string, unknown>, arg2?: LoggerContext | string): void =>
+    emit('info', arg1, arg2),
+  warn: (arg1: string | Record<string, unknown>, arg2?: LoggerContext | string): void =>
+    emit('warn', arg1, arg2),
+  error: (arg1: string | Record<string, unknown>, arg2?: LoggerContext | string): void =>
+    emit('error', arg1, arg2),
 };
 
 export function getCorrelationId(req: Request): string | undefined {
-  return (req as any).correlationId as string | undefined;
+  return req.correlationId;
 }
 
 export function baseReqLog(req: Request) {

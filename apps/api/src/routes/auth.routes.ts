@@ -1,81 +1,69 @@
-import { Router } from "express";
-import { z } from "zod";
-import jwt from "jsonwebtoken";
+import { Router } from 'express';
+import { z } from 'zod';
+import { authService } from '../domain/services/auth.service';
+import { logger } from '../infra/logger/logger';
+import { loginRateLimit } from '../middleware/rateLimit';
+import { validateBody } from '../middleware/validate';
 
-import { env } from "../config/env";
-import { validate } from "../middleware/validate";
-import { AppError } from "../middleware/errorHandler";
-import { writeAudit } from "../middleware/audit";
-import { baseReqLog, logger } from "../infra/logger/logger";
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+});
 
-// Demo users (in-memory)
-const USERS = [
-  { id: "usr_admin_01", username: "admin", password: "admin123", roleIds: ["role_admin"], isActive: true },
-  { id: "usr_sales_01", username: "sales1", password: "sales123", roleIds: ["role_sales"], isActive: true },
-];
-
-const LoginSchema = z.object({
-  username: z.string().min(2),
-  password: z.string().min(3),
+const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
 });
 
 export function authRouter() {
   const router = Router();
 
-  // POST /api/v1/auth/login
-  router.post(
-    "/login",
-    validate(LoginSchema),
-    async (req, res) => {
-      const { username, password } = req.body;
+  router.post('/login', loginRateLimit, validateBody(loginSchema), (req, res, next) => {
+    try {
+      const { email, password } = req.body;
+      const response = authService.login(email, password, req.correlationId);
 
-      const user = USERS.find((u) => u.username === username);
-      if (!user || user.password !== password) {
-        throw new AppError({
-          status: 401,
-          title: "Unauthorized",
-          detail: "Invalid credentials.",
-          type: "urn:telecom:error:auth",
-        });
-      }
-      if (!user.isActive) {
-        throw new AppError({
-          status: 403,
-          title: "Forbidden",
-          detail: "User is blocked.",
-          type: "urn:telecom:error:user_blocked",
-        });
-      }
-
-      const accessToken = jwt.sign(
-        { sub: user.id, roleIds: user.roleIds },
-        env.JWT_SECRET,
-        { expiresIn: "2h" }
-      );
-
-      // Audit
-      await writeAudit(req, {
-        action: "USER_LOGIN",
-        entityType: "user",
-        entityId: user.id,
-        before: null,
-        after: { username: user.username },
+      logger.info('User logged in', {
+        correlationId: req.correlationId,
+        userId: response.user.id,
+        action: 'USERLOGIN',
       });
 
-      logger.info({ ...baseReqLog(req), userId: user.id }, "Login success");
-
-      res.status(200).json({
-        accessToken,
-        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-      });
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
     }
-  );
+  });
 
-  // POST /api/v1/auth/logout 
-  router.post("/logout", async (req, res) => {
-   
-    res.status(200).json({ status: "ok" });
+  router.post('/refresh', validateBody(refreshSchema), (req, res, next) => {
+    try {
+      const { refreshToken } = req.body;
+      const response = authService.refresh(refreshToken);
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/logout', validateBody(refreshSchema), (req, res, next) => {
+    try {
+      const { refreshToken } = req.body;
+      authService.logout(refreshToken, req.user?.id ?? null, req.correlationId);
+
+      logger.info('User logged out', {
+        correlationId: req.correlationId,
+        userId: req.user?.id,
+        action: 'USERLOGOUT',
+      });
+
+      res.status(200).json({ success: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;
 }
+
+const router = authRouter();
+
+export default router;
