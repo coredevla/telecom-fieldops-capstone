@@ -11,12 +11,29 @@ export type ProductCategory =
   | 'DECODIFICADOR'
   | 'ANTENA'
   | 'CABLEADO'
-  | 'SIM';
+  | 'SIM'
+  | 'STB'      
+  | 'CABLE'    
 
 export interface Products {
   id: string;
   name: string;
-  category: ProductCategory;
-  description: string;
+  category: string; 
+  description?: string;
   isSerialized: boolean; 
+}
+
+
+export interface Inventory {
+  id: string;
+  branchId: string;
+  productId: string;
+  qtyAvailable: number;
+  qtyReserved: number;
+}
+
+
+export interface SeedData {
+  products: Products[];
+  inventory: Inventory[];
 }
