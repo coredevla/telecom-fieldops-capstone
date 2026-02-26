@@ -4,20 +4,22 @@
     "description": "API FieldOps Telecom - operations, inventory, work orders",
     "main": "dist/main.js",
     "scripts": {
-      "build": "tsc",
-      "start": "node dist/main.js",
-      "dev": "ts-node-dev --respawn src/main.ts"
+        "build": "tsc",
+        "start": "node dist/main.js",
+        "dev": "ts-node-dev --respawn src/main.ts"
     },
     "engines": {
-      "node": ">=18"
+        "node": ">=18"
     },
     "dependencies": {
-      "express": "^4.21.0"
+        "cors": "^2.8.6",
+        "express": "^4.22.1"
     },
     "devDependencies": {
-      "@types/express": "^4.17.21",
-      "@types/node": "^20.10.0",
-      "typescript": "^5.3.0",
-      "ts-node-dev": "^2.0.0"
+        "@types/cors": "^2.8.19",
+        "@types/express": "^4.17.25",
+        "@types/node": "^20.10.0",
+        "ts-node-dev": "^2.0.0",
+        "typescript": "^5.3.0"
     }
-  }
+}

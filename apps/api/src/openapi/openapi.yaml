@@ -312,3 +312,46 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetails" }
+
+  /sucursales/{sucursalId}/inventario:
+  get:
+    tags: [Inventario]
+    summary: Obtener inventario por sucursal
+    description: Retorna la lista de productos y servicios disponibles en una sucursal específica junto con su cantidad.
+    parameters:
+      - name: sucursalId
+        in: path
+        required: true
+        schema: 
+          type: string
+        description: ID de la sucursal para consultar su inventario
+    responses:
+      "200":
+        description: Lista de inventario de la sucursal
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    enum: [producto, servicio]
+                    description: Tipo del ítem en inventario
+                  nombre:
+                    type: string
+                    description: Nombre del producto o servicio
+                  cantidad:
+                    type: integer
+                    description: Cantidad disponible en inventario
+      "404":
+        description: Sucursal no encontrada o sin inventario
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Sucursal no encontrada"
