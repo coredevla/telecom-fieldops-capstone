@@ -424,7 +424,89 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /inventory/branches:
+    get:
+      tags: [Inventory]
+      responses:
+        "200":
+          description: branches list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Branch" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
+  /inventory/products:
+    get:
+      tags: [Inventory]
+      responses:
+        "200":
+          description: products available for inventory operations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /inventory/reservations:
+    post:
+      tags: [Inventory]
+      summary: Reserve inventory for a work order request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReserveInventoryRequest" }
+      responses:
+        "201":
+          description: reservation created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationRecord" }
+        "400":
+          description: validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "409":
+          description: insufficient stock / conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /inventory/reservations/{workOrderId}:
+    delete:
+      tags: [Inventory]
+      summary: Release reservation for a work order
+      parameters:
+        - name: workOrderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: reservation released
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationRecord" }
+        "404":
+          description: reservation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "400":
+          description: invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /sync/import:
     post:
