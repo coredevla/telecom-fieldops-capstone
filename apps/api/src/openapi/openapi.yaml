@@ -187,6 +187,50 @@ components:
         newStatus: { $ref: "#/components/schemas/WorkOrderStatus" }
         reason: { type: string, minLength: 3, maxLength: 200 }
 
+    
+    SyncImportRequest:
+      type: object
+      required: [meta, operations]
+      properties:
+        meta:
+          type: object
+          required: [exportedAt, deviceId, appVersion]
+          properties:
+            exportedAt: { type: string, format: date-time }
+            deviceId: { type: string }
+            appVersion: { type: string }
+        operations:
+          type: array
+          items:
+            type: object
+            required: [opId, entityType, entityId, operation, payload, createdAt, createdBy, baseVersion, correlationId]
+            properties:
+              opId: { type: string }
+              entityType: { type: string, enum: [workOrder] }
+              entityId: { type: string }
+              operation: { type: string, enum: [CHANGE_STATUS, ADD_NOTE] }
+              payload: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              createdBy: { type: string }
+              baseVersion: { type: integer }
+              correlationId: { type: string }
+
+    SyncImportResponse:
+      type: object
+      required: [appliedCount, conflictCount, conflicts]
+      properties:
+        appliedCount: { type: integer }
+        conflictCount: { type: integer }
+        conflicts:
+          type: array
+          items:
+            type: object
+            required: [opId, entityId, reason]
+            properties:
+              opId: { type: string }
+              entityId: { type: string }
+              reason: { type: string, example: "Version mismatch: server=5 client=3" }
+
   responses:
     Unauthorized:
       description: Unauthorized
@@ -206,7 +250,7 @@ paths:
   /health:
     get:
       security: []
-      tags: [Auth]
+      tags: [Health]
       responses:
         "200":
           description: ok
@@ -285,6 +329,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "409":
+          description: conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -312,3 +361,130 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetails" }
+
+    
+  /roles:
+    get:
+      tags: [Roles]
+      responses:
+        "200":
+          description: list roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }      
+
+  /catalog/plans:
+    get:
+      tags: [Catalog]
+      responses:
+        "200":
+          description: list plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Plan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /catalog/products:
+    get:
+      tags: [Catalog]
+      responses:
+        "200":
+          description: list products
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product"}
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  
+  /inventory:
+    get:
+      tags: [Inventory]
+      parameters:
+        - name: branchId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: inventory list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/InventoryItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+
+
+  /sync/import:
+    post:
+      tags: [Sync]
+      summary: Apply offline exported operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncImportRequest" }
+      responses:
+        "200":
+          description: import result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncImportResponse" }
+        "400":
+          description: schema invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+
+
+  /audit:
+    get:
+      tags: [Audit]
+      parameters:
+        - name: entityType
+          in: query
+          required: false
+          schema: { type: string }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /kpis/summary:
+    get:
+      tags: [KPIs]
+      responses:
+        "200":
+          description: kpi summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
