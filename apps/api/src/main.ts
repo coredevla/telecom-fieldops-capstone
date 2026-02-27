@@ -1,9 +1,11 @@
 import app from './infra/app';
+import { env } from './config/env';
+import { logger } from './infra/logger/logger';
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = env.PORT;
 
 app.listen(PORT, () => {
-  console.log(`API listening on port ${PORT}`);
+  logger.info({ correlationId: 'bootstrap', action: 'STARTUP', port: PORT }, 'API started');
 });
 
 export default app;

@@ -3,7 +3,7 @@ This project is for student use
 
 Proyecto: Telecom FieldOps Suite
 
-URL Web: (pendiente)
+URL Web: https://telecom-fieldops-capstone.vercel.app/
 URL API: https://telecom-fieldops-capstone-production.up.railway.app/
 - Health en producción: https://telecom-fieldops-capstone-production.up.railway.app/api/v1/health
 
@@ -46,4 +46,4 @@ Auditoría: (pendiente)
 Offline (LocalStorage + export/import): (pendiente)
 KPIs: (pendiente)
 Mapa Endpoint -> RF: (pendiente)
-Cómo hacer un PR: usar la plantilla en `.github/PULL_REQUEST_TMP.md` y rellenar objetivo, RF/RB, cambios, cómo probar.
+Cómo hacer un PR: usar la plantilla en `.github/PULL_REQUEST_TMP.md` y rellenar objetivo, RF/RB, cambios, cómo probar..
