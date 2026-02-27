@@ -1,61 +1,10 @@
-import React from "react";
-import { InventarioPage } from "./pages/Inventario";
+import { Outlet } from 'react-router-dom';
 
-function App() {
-  // render the inventory page directly; using routing would be similar
+// root component uses router outlet; specific pages are defined via routes
+export default function App() {
   return (
-    <div className="App">
-      <InventarioPage />
+    <div className='min-w-screen min-h-screen'>
+      <Outlet />
     </div>
   );
-};
-
-export default App;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//export default function App() {
-//   return (
-//     <main style={{ fontFamily: "sans-serif", padding: "1rem" }}>
-//       <h1>Telecom FieldOps</h1>
-//       <p>React + Vite funcionando.</p>
-//     </main>
-//   );
-// }
+}

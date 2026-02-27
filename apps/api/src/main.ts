@@ -1,9 +1,9 @@
-import app from './infra/app';
+import { createApp } from "./infra/app";
+import { env } from "./config/env";
+import { logger } from "./infra/logger/logger";
 
-const PORT = Number(process.env.PORT) || 3000;
+const app = createApp();
 
-app.listen(PORT, () => {
-  console.log(`API listening on port ${PORT}`);
+app.listen(env.PORT, () => {
+  logger.info({ port: env.PORT }, "API started");
 });
-
-export default app;
