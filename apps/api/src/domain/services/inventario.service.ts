@@ -1,27 +1,25 @@
 import { findBySucursalId } from "../../infra/repositories/inventario.repository";
-import { productos, servicios } from "../../infra/storage/data";
+import { products } from "../../../../../scripts/seed-data.json";
+
+export type Product = {
+  id: string;
+  name: string;
+  category: string;
+  isSerialized: boolean;
+};
 
 export const obtenerInventarioPorSucursal = (sucursalId: string) => {
-
   const items = findBySucursalId(sucursalId);
 
-  return items.map(item => {
-    if (item.type === "product") {
-      const producto = productos.find(p => p.id === item.itemId);
-      return {
-        tipo: "producto",
-        nombre: producto?.nombre,
-        cantidad: item.amount
-      };
-    }
+  return items.map((item) => {
+    const producto = (products as Product[]).find(p => p.id === item.productId);
 
-    if (item.type === "service") {
-      const servicio = servicios.find(s => s.id === item.itemId);
-      return {
-        tipo: "servicio",
-        nombre: servicio?.nombre,
-        cantidad: item.amount
-      };
-    }
+    return {
+      tipo: "producto",
+      nombre: producto?.name ?? "Producto desconocido",
+      categoria: producto?.category ?? "Sin categoría",
+      cantidadDisponible: item.qtyAvailable,
+      cantidadReservada: item.qtyReserved,
+    };
   });
 };
