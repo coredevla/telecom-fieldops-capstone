@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { randomBytes } from 'crypto';
 
 const parseIntWithDefault = (value: string | undefined, fallback: number): number => {
