@@ -1,8 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { inventoryService } from '../domain/services/invetory.service';
-
-
-export function inventoryRouter() {
+import { inventoryService } from '../../domain/services/invetory.service';
 
 const router = Router();
 
@@ -50,6 +47,4 @@ router.delete('/inventory/reservations/:workOrderId', (req: Request, res: Respon
   }
 });
 
-return router;
-
-}
+export default router;

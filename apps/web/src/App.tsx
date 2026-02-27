@@ -1,18 +1,11 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { CatalogPage } from './pages/CatalogPage';
+import { Outlet } from 'react-router-dom';
 
-function App() {
+export default function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/catalog" element={<CatalogPage />} />
-        
-        <Route path="/" element={<Navigate to="/catalog" replace />} />
-        
-        <Route path="*" element={<div style={{ padding: '20px' }}>404 - Página no encontrada</div>} />
-      </Routes>
-    </Router>
-  );
+    <div className='min-w-screen min-h-screen'>
+      <Outlet />
+    </div>
+  )
 }
 
 export default App;

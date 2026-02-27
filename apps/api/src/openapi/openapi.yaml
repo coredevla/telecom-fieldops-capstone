@@ -2,83 +2,181 @@ openapi: 3.1.0
 info:
   title: Telecom FieldOps API
   version: 1.0.0
-  description: API first contract for operations, inventory, and work orders with audit and security.
+  description: Security-focused API for authentication, user management, roles and audit-ready operations.
 servers:
-  - url: https://example.com/api/v1
+  - url: http://localhost:3000/api/v1
 
 tags:
+  - name: Health
   - name: Auth
   - name: Users
   - name: Roles
-  - name: Catalog
-  - name: Inventory
-  - name: WorkOrders
-  - name: Audit
-  - name: KPIs
 
 components:
   securitySchemes:
+    OAuth2Password:
+      type: oauth2
+      flows:
+        password:
+          tokenUrl: /api/v1/auth/login
+          scopes: {}
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
 
   schemas:
     ProblemDetails:
       type: object
-      required: [type, title, status, detail, correlationId]
+      required: [type, title, status, detail, instance, correlationId]
       properties:
-        type: { type: string, example: "urn:telecom:error:validation" }
-        title: { type: string, example: "Validation error" }
-        status: { type: integer, example: 400 }
-        detail: { type: string, example: "Invalid input." }
-        instance: { type: string, example: "/api/v1/work-orders" }
-        correlationId: { type: string, example: "c_123abc" }
+        type:
+          type: string
+          example: urn:telecom:error:validation
+        title:
+          type: string
+          example: Validation Error
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: Request body validation failed.
+        instance:
+          type: string
+          example: /api/v1/users
+        correlationId:
+          type: string
+          example: c123
         errors:
           type: object
           additionalProperties:
             type: array
-            items: { type: string }
-
-    AuditEvent:
-      type: object
-      required: [id, at, actorUserId, action, entityType, entityId]
-      properties:
-        id: { type: string, example: "aud_1001" }
-        at: { type: string, format: date-time }
-        actorUserId: { type: string, example: "usr_001" }
-        action: { type: string, example: "WORK_ORDER_STATUS_CHANGED" }
-        entityType: { type: string, example: "workOrder" }
-        entityId: { type: string, example: "wo_10021" }
-        before: { type: object, additionalProperties: true }
-        after: { type: object, additionalProperties: true }
-        correlationId: { type: string, example: "c_123abc" }
-
-    User:
-      type: object
-      required: [id, username, displayName, isActive]
-      properties:
-        id: { type: string }
-        username: { type: string }
-        displayName: { type: string }
-        isActive: { type: boolean }
-        roleIds:
-          type: array
-          items: { type: string }
+            items:
+              type: string
 
     Role:
       type: object
       required: [id, name, permissionKeys]
       properties:
-        id: { type: string }
-        name: { type: string }
+        id:
+          type: string
+        name:
+          type: string
         permissionKeys:
           type: array
-          items: { type: string }
+          items:
+            type: string
+
+    UserPublic:
+      type: object
+      required: [id, email, blocked, roles]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        blocked:
+          type: boolean
+        roles:
+          type: array
+          items:
+            type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginResponse:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, refreshExpiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          example: 3600
+        refreshExpiresIn:
+          type: integer
+          example: 604800
+        user:
+          allOf:
+            - $ref: '#/components/schemas/UserPublic'
+            - type: object
+              required: [permissions]
+              properties:
+                permissions:
+                  type: array
+                  items:
+                    type: string
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    CreateUserRequest:
+      type: object
+      required: [email, password, roles]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+
+    UpdateUserRequest:
+      type: object
+      minProperties: 1
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        blocked:
+          type: boolean
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+
+    AuditEvent:
+      type: object
+      required: [id, at, actorUserId, action, entityType, entityId]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        actorUserId: { type: string, nullable: true }
+        action: { type: string }
+        entityType: { type: string }
+        entityId: { type: string }
+        before: { type: object, additionalProperties: true, nullable: true }
+        after: { type: object, additionalProperties: true, nullable: true }
+        correlationId: { type: string }
 
     Plan:
       type: object
@@ -100,94 +198,57 @@ components:
         category: { type: string, enum: [ROUTER, MODEM, ONT, STB, ANTENNA, CABLE, PHONE, TABLET, LAPTOP, SIM] }
         isSerialized: { type: boolean }
 
+    Branch:
+      type: object
+      required: [id, name, isMain]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        isMain: { type: boolean }
+
     InventoryItem:
       type: object
-      required: [id, branchId, productId, qtyAvailable, qtyReserved, updatedAt]
+      required: [id, branchId, productId, qtyAvailable, qtyReserved]
       properties:
         id: { type: string }
         branchId: { type: string }
         productId: { type: string }
         qtyAvailable: { type: integer }
         qtyReserved: { type: integer }
-        updatedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time, nullable: true }
 
-    WorkOrderType:
-      type: string
-      enum:
-        - NEW_SERVICE_INSTALL
-        - CLAIM_TROUBLESHOOT
-        - PLAN_AND_EQUIPMENT_SALE
-        - MONTHLY_PAYMENT
-        - EQUIPMENT_REPLACEMENT
-        - SERVICE_UPGRADE
-        - SERVICE_DOWN_OUTAGE
-        - SIM_REPLACEMENT
-
-    WorkOrderStatus:
-      type: string
-      enum:
-        - DRAFT
-        - SUBMITTED
-        - IN_REVIEW
-        - ELIGIBILITY_CHECK
-        - INVENTORY_RESERVATION
-        - SCHEDULED
-        - IN_PROGRESS
-        - VERIFICATION
-        - COMPLETED
-        - CANCELLED
-        - REJECTED
-        - ON_HOLD
-        - CONFLICT
-
-    WorkOrder:
+    ReserveInventoryRequest:
       type: object
-      required: [id, type, status, customerId, createdAt]
+      required: [workOrderId, branchId, items]
       properties:
-        id: { type: string }
-        type: { $ref: "#/components/schemas/WorkOrderType" }
-        status: { $ref: "#/components/schemas/WorkOrderStatus" }
-        customerId: { type: string }
+        workOrderId: { type: string }
         branchId: { type: string }
-        planId: { type: string, nullable: true }
-        requestedProducts:
+        items:
           type: array
+          minItems: 1
           items:
             type: object
             required: [productId, qty]
             properties:
               productId: { type: string }
               qty: { type: integer, minimum: 1 }
-        notes: { type: string, nullable: true }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
 
-    CreateWorkOrderRequest:
+    ReservationRecord:
       type: object
-      required: [type, customerId, branchId]
+      required: [workOrderId, branchId, items, reservedAt]
       properties:
-        type: { $ref: "#/components/schemas/WorkOrderType" }
-        customerId: { type: string }
+        workOrderId: { type: string }
         branchId: { type: string }
-        planId: { type: string, nullable: true }
-        requestedProducts:
+        items:
           type: array
           items:
             type: object
             required: [productId, qty]
             properties:
               productId: { type: string }
-              qty: { type: integer, minimum: 1 }
-        notes: { type: string, maxLength: 500, nullable: true }
+              qty: { type: integer }
+        reservedAt: { type: string, format: date-time }
 
-    ChangeWorkOrderStatusRequest:
-      type: object
-      required: [newStatus, reason]
-      properties:
-        newStatus: { $ref: "#/components/schemas/WorkOrderStatus" }
-        reason: { type: string, minLength: 3, maxLength: 200 }
-
-    
     SyncImportRequest:
       type: object
       required: [meta, operations]
@@ -229,19 +290,45 @@ components:
             properties:
               opId: { type: string }
               entityId: { type: string }
-              reason: { type: string, example: "Version mismatch: server=5 client=3" }
+              reason: { type: string }
 
   responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
     Unauthorized:
       description: Unauthorized
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/ProblemDetails" }
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
     Forbidden:
       description: Forbidden
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/ProblemDetails" }
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    TooManyRequests:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
 
 security:
   - BearerAuth: []
@@ -249,133 +336,213 @@ security:
 paths:
   /health:
     get:
-      security: []
       tags: [Health]
+      security: []
       responses:
-        "200":
+        '200':
           description: ok
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
 
   /auth/login:
     post:
-      security: []
       tags: [Auth]
+      security: []
+      summary: Login with email and password
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [username, password]
-              properties:
-                username: { type: string }
-                password: { type: string }
+              $ref: '#/components/schemas/LoginRequest'
       responses:
-        "200":
-          description: token issued
+        '200':
+          description: Token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Rotate refresh token and issue a new token pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Revoke refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Logged out
           content:
             application/json:
               schema:
                 type: object
-                required: [accessToken, expiresAt]
+                required: [success]
                 properties:
-                  accessToken: { type: string }
-                  expiresAt: { type: string, format: date-time }
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /users:
     get:
       tags: [Users]
+      summary: List users
       responses:
-        "200":
-          description: list users
+        '200':
+          description: Users list
           content:
             application/json:
               schema:
                 type: array
-                items: { $ref: "#/components/schemas/User" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /users/{userId}/block:
+                items:
+                  $ref: '#/components/schemas/UserPublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Users]
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200": { description: blocked }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /work-orders:
-    post:
-      tags: [WorkOrders]
+      summary: Create user
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateWorkOrderRequest" }
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
       responses:
-        "201":
-          description: created
+        '201':
+          description: User created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/WorkOrder" }
-        "400":
-          description: validation error
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ProblemDetails" }
-        "409":
-          description: conflict
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ProblemDetails" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
-  /work-orders/{workOrderId}/status:
+  /users/{id}:
     patch:
-      tags: [WorkOrders]
+      tags: [Users]
+      summary: Update user data and roles
       parameters:
-        - name: workOrderId
-          in: path
+        - in: path
+          name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ChangeWorkOrderStatusRequest" }
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
       responses:
-        "200":
-          description: updated
+        '200':
+          description: User updated
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/WorkOrder" }
-        "409":
-          description: invalid transition / conflict
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ProblemDetails" }
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
-    
+  /users/{id}/block:
+    post:
+      tags: [Users]
+      summary: Block user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User blocked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /roles:
     get:
       tags: [Roles]
+      summary: List roles and permission keys
       responses:
-        "200":
-          description: list roles
+        '200':
+          description: Roles list
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Role" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }      
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /catalog/plans:
     get:
@@ -424,7 +591,89 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /inventory/branches:
+    get:
+      tags: [Inventory]
+      responses:
+        "200":
+          description: branches list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Branch" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
+  /inventory/products:
+    get:
+      tags: [Inventory]
+      responses:
+        "200":
+          description: products available for inventory operations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /inventory/reservations:
+    post:
+      tags: [Inventory]
+      summary: Reserve inventory for a work order request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReserveInventoryRequest" }
+      responses:
+        "201":
+          description: reservation created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationRecord" }
+        "400":
+          description: validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "409":
+          description: insufficient stock / conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /inventory/reservations/{workOrderId}:
+    delete:
+      tags: [Inventory]
+      summary: Release reservation for a work order
+      parameters:
+        - name: workOrderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: reservation released
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationRecord" }
+        "404":
+          description: reservation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "400":
+          description: invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /sync/import:
     post:
