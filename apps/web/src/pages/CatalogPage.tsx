@@ -5,8 +5,7 @@ import { ProductDetail } from "../components/catalog/ProductDetail";
 import type { Product } from "../types/product";
 import Layout from "../layouts/Layout";
 import PageNavigation from "../components/PageNavigation";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+import { API_BASE_URL } from "../config/env";
 
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: "Todos",
@@ -33,7 +32,7 @@ export const CatalogPage: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`${API_URL}/api/v1/products`);
+        const res = await fetch(`${API_BASE_URL}/api/v1/products`);
         if (!res.ok) throw new Error(`Error ${res.status}`);
         const data: Product[] = await res.json();
         setProducts(data);

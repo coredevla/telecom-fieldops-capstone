@@ -6,8 +6,9 @@
  */
 
 import { ApiError, ProblemDetails } from '../types/plans';
+import { API_BASE_URL } from '../config/env';
 
-const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const BASE_URL = API_BASE_URL;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
