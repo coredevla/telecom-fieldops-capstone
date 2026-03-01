@@ -38,9 +38,9 @@ export const workOrderService = {
     return { ...wo, allowedTransitions: allowedTransitions(wo.type, wo.status) };
   },
 
-  createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
+  async createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
     const created = workOrderRepository.create(payload);
-    auditService.record({
+    await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_CREATED,
       entityType: 'WorkOrder',
@@ -52,7 +52,7 @@ export const workOrderService = {
     return created;
   },
 
-  updateStatus(
+  async updateStatus(
     id: string,
     input: UpdateWorkOrderStatusPayload,
     actorUserId: string | null,
@@ -78,7 +78,7 @@ export const workOrderService = {
     // inventory reservation side effect
     if (input.newStatus === 'INVENTORY_RESERVATION' && wo.items && wo.items.length > 0) {
       try {
-        inventoryService.reserveForRequest({
+        await inventoryService.reserveForRequest({
           workOrderId: wo.id,
           branchId: wo.branchId ?? '',
           items: wo.items,
@@ -105,7 +105,7 @@ export const workOrderService = {
       throw new ApiError(500, 'Internal Server Error', 'Unable to update work order', 'urn:telecom:error:internal');
     }
 
-    auditService.record({
+    await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_STATUS,
       entityType: 'WorkOrder',

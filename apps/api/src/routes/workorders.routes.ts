@@ -53,13 +53,17 @@ router.post(
   '/work-orders',
   requirePermissions(['workorders:create']),
   validateBody(createSchema),
-  (req: Request, res: Response) => {
-    const created = workOrderService.createWorkOrder(
-      req.body,
-      req.user?.id ?? null,
-      req.correlationId,
-    );
-    res.status(201).json(created);
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = await workOrderService.createWorkOrder(
+        req.body,
+        req.user?.id ?? null,
+        req.correlationId,
+      );
+      res.status(201).json(created);
+    } catch (err) {
+      next(err);
+    }
   },
 );
 
@@ -68,9 +72,9 @@ router.patch(
   requirePermissions(['workorders:update-state']),
   validateParams(workOrderIdParams),
   validateBody(updateStatusSchema),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const updated = workOrderService.updateStatus(
+      const updated = await workOrderService.updateStatus(
         req.params.id,
         req.body,
         req.user?.id ?? null,
