@@ -48,8 +48,8 @@ const round = (value: number): number => Math.round(value * 100) / 100;
 
 const calcHoursBetween = (start: Date, end: Date): number => (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
-const isValidForKpi = (workOrder: WorkOrder): boolean => {
-  if (!VALID_STATUSES.has(workOrder.status)) {
+const isValidForKpi = async (workOrder: WorkOrder): Promise<boolean> => {
+  if (!VALID_STATUSES.has(workOrder.status as WorkOrderStatus)) {
     return false;
   }
 
@@ -59,7 +59,7 @@ const isValidForKpi = (workOrder: WorkOrder): boolean => {
   }
 
   if (workOrder.createdByUserId) {
-    const creator = userRepository.findById(workOrder.createdByUserId);
+    const creator = await userRepository.findById(workOrder.createdByUserId);
     if (!creator || creator.blocked) {
       return false;
     }
@@ -69,12 +69,16 @@ const isValidForKpi = (workOrder: WorkOrder): boolean => {
 };
 
 export const kpiService = {
-  getDashboardKpis() {
+  async getDashboardKpis() {
     const now = new Date();
-    const validWorkOrders = workOrderRepository.listAll().filter(isValidForKpi);
+    const allWorkOrders = await workOrderRepository.listAll();
+    const validWorkOrders: WorkOrder[] = [];
+    for (const wo of allWorkOrders) {
+      if (await isValidForKpi(wo)) validWorkOrders.push(wo);
+    }
     const totalValid = validWorkOrders.length;
 
-    const createdTodayByType = validWorkOrders.reduce<Record<string, number>>((acc, current) => {
+    const createdTodayByType = validWorkOrders.reduce<Record<string, number>>((acc: Record<string, number>, current: WorkOrder) => {
       const createdAt = parseDate(current.createdAt);
       if (!createdAt || !isSameLocalDay(createdAt, now)) {
         return acc;
@@ -83,7 +87,7 @@ export const kpiService = {
       return acc;
     }, {});
 
-    const completedToday = validWorkOrders.filter((item) => {
+    const completedToday = validWorkOrders.filter((item: WorkOrder) => {
       if (item.status !== 'COMPLETED') {
         return false;
       }
@@ -91,10 +95,10 @@ export const kpiService = {
       return completedAt ? isSameLocalDay(completedAt, now) : false;
     }).length;
 
-    const cancelledTotal = validWorkOrders.filter((item) => item.status === 'CANCELLED').length;
+    const cancelledTotal = validWorkOrders.filter((item: WorkOrder) => item.status === 'CANCELLED').length;
     const cancellationRate = totalValid > 0 ? round((cancelledTotal / totalValid) * 100) : 0;
 
-    const cycleHoursByType = validWorkOrders.reduce<Record<string, number[]>>((acc, current) => {
+    const cycleHoursByType = validWorkOrders.reduce<Record<string, number[]>>((acc: Record<string, number[]>, current: WorkOrder) => {
       if (current.status !== 'COMPLETED') {
         return acc;
       }
@@ -110,15 +114,15 @@ export const kpiService = {
     }, {});
 
     const avgCycleHoursByType = Object.entries(cycleHoursByType).reduce<Record<string, number>>(
-      (acc, [type, durations]) => {
-        const total = durations.reduce((sum, current) => sum + current, 0);
+      (acc: Record<string, number>, [type, durations]: [string, number[]]) => {
+        const total = durations.reduce((sum: number, current: number) => sum + current, 0);
         acc[type] = durations.length > 0 ? round(total / durations.length) : 0;
         return acc;
       },
       {},
     );
 
-    const backlogByStatus = validWorkOrders.reduce<Record<string, number>>((acc, current) => {
+    const backlogByStatus = validWorkOrders.reduce<Record<string, number>>((acc: Record<string, number>, current: WorkOrder) => {
       if (TERMINAL_STATUSES.has(current.status)) {
         return acc;
       }
@@ -126,12 +130,12 @@ export const kpiService = {
       return acc;
     }, {});
 
-    const branches = inventoryService.listBranches();
-    const allInventory = inventoryService.listAllInventory();
+    const branches = await inventoryService.listBranches();
+    const allInventory = await inventoryService.listAllInventory();
 
-    const criticalInventoryByBranch = branches.map((branch) => {
+    const criticalInventoryByBranch = branches.map((branch: { id: string; name: string }) => {
       const criticalItems = allInventory.filter(
-        (row) => row.branchId === branch.id && row.qtyAvailable <= CRITICAL_THRESHOLD,
+        (row: { branchId: string; qtyAvailable: number }) => row.branchId === branch.id && row.qtyAvailable <= CRITICAL_THRESHOLD,
       );
 
       return {
@@ -142,9 +146,10 @@ export const kpiService = {
       };
     });
 
+    type InventoryRowWithName = { productId: string; productName: string; qtyReserved: number };
     const topReservedProducts = allInventory
-      .filter((item) => item.qtyReserved > 0)
-      .reduce<Record<string, { productId: string; productName: string; reservedQty: number }>>((acc, current) => {
+      .filter((item: InventoryRowWithName) => item.qtyReserved > 0)
+      .reduce<Record<string, { productId: string; productName: string; reservedQty: number }>>((acc: Record<string, { productId: string; productName: string; reservedQty: number }>, current: InventoryRowWithName) => {
         const existing = acc[current.productId] ?? {
           productId: current.productId,
           productName: current.productName,
@@ -155,21 +160,22 @@ export const kpiService = {
         return acc;
       }, {});
 
+    type ReservedProduct = { productId: string; productName: string; reservedQty: number };
     const top5ReservedProducts = Object.values(topReservedProducts)
-      .sort((a, b) => b.reservedQty - a.reservedQty)
+      .sort((a: ReservedProduct, b: ReservedProduct) => b.reservedQty - a.reservedQty)
       .slice(0, 5);
 
     const claimsByFailureCategory = validWorkOrders
-      .filter((item) => item.type === 'CLAIM_TROUBLESHOOT')
-      .reduce<Record<string, number>>((acc, current) => {
+      .filter((item: WorkOrder) => item.type === 'CLAIM_TROUBLESHOOT')
+      .reduce<Record<string, number>>((acc: Record<string, number>, current: WorkOrder) => {
         const category = current.status === 'CONFLICT' ? 'CONFLICT' : 'UNSPECIFIED';
         acc[category] = (acc[category] ?? 0) + 1;
         return acc;
       }, {});
 
     const claimResolutionDurations = validWorkOrders
-      .filter((item) => item.type === 'CLAIM_TROUBLESHOOT' && item.status === 'COMPLETED')
-      .map((item) => {
+      .filter((item: WorkOrder) => item.type === 'CLAIM_TROUBLESHOOT' && item.status === 'COMPLETED')
+      .map((item: WorkOrder) => {
         const createdAt = parseDate(item.createdAt);
         const completedAt = parseDate(item.completedAt);
         if (!createdAt || !completedAt || completedAt < createdAt) {
@@ -181,20 +187,21 @@ export const kpiService = {
 
     const avgClaimResolutionHours =
       claimResolutionDurations.length > 0
-        ? round(claimResolutionDurations.reduce((sum, current) => sum + current, 0) / claimResolutionDurations.length)
+        ? round(claimResolutionDurations.reduce((sum: number, current: number) => sum + current, 0) / claimResolutionDurations.length)
         : 0;
 
-    const installationSet = new Set(['NEW_SERVICE_INSTALL', 'SERVICE_UPGRADE']);
-    const installationWorkOrders = validWorkOrders.filter((item) => installationSet.has(item.type));
-    const failedInstallationCount = installationWorkOrders.filter((item) =>
+    const installationSet = new Set<string>(['NEW_SERVICE_INSTALL', 'SERVICE_UPGRADE']);
+    const installationWorkOrders = validWorkOrders.filter((item: WorkOrder) => installationSet.has(item.type));
+    const failedInstallationCount = installationWorkOrders.filter((item: WorkOrder) =>
       item.status === 'REJECTED' || item.status === 'CONFLICT',
     ).length;
     const failedInstallationRate =
       installationWorkOrders.length > 0 ? round((failedInstallationCount / installationWorkOrders.length) * 100) : 0;
 
-    const totalCreatedToday = Object.values(createdTodayByType).reduce((sum, current) => sum + current, 0);
-    const totalBacklog = Object.values(backlogByStatus).reduce((sum, current) => sum + current, 0);
-    const totalCriticalItems = criticalInventoryByBranch.reduce((sum, current) => sum + current.criticalItems, 0);
+    const totalCreatedToday = Object.values(createdTodayByType).reduce((sum: number, current: number) => sum + current, 0);
+    const totalBacklog = Object.values(backlogByStatus).reduce((sum: number, current: number) => sum + current, 0);
+    type BranchCritical = { branchId: string; branchName: string; threshold: number; criticalItems: number };
+    const totalCriticalItems = criticalInventoryByBranch.reduce((sum: number, current: BranchCritical) => sum + current.criticalItems, 0);
 
     return {
       generatedAt: now.toISOString(),

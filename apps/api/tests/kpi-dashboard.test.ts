@@ -1,14 +1,22 @@
 import request from 'supertest';
 import app from '../src/infra/app';
 import { resetDb } from '../src/infra/db/connection';
+import { userRepository } from '../src/infra/repositories/user.repo';
+
+const VENTAS_USER_ID = 'usr-ventas-01';
 
 const login = async (email: string, password: string) => {
   return request(app).post('/api/v1/auth/login').send({ email, password });
 };
 
+const ensureVentasUnblocked = async () => {
+  await userRepository.update(VENTAS_USER_ID, { blocked: false });
+};
+
 describe('RF-13 dashboard KPI endpoint', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetDb();
+    await ensureVentasUnblocked();
   });
 
   it('returns dashboard payload with at least 8 KPIs', async () => {

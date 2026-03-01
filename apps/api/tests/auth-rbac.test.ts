@@ -1,16 +1,25 @@
 import request from 'supertest';
 import app from '../src/infra/app';
 import { resetDb } from '../src/infra/db/connection';
+import { userRepository } from '../src/infra/repositories/user.repo';
 import { auditService } from '../src/domain/services/audit.service';
 import type { AuditEvent } from '../src/domain/models/types';
+
+const VENTAS_USER_ID = 'usr-ventas-01';
 
 const login = async (email: string, password: string) => {
   return request(app).post('/api/v1/auth/login').send({ email, password });
 };
 
+/** Asegura que el usuario ventas esté desbloqueado (los tests usan Prisma/DB real). */
+const ensureVentasUnblocked = async () => {
+  await userRepository.update(VENTAS_USER_ID, { blocked: false });
+};
+
 describe('Auth and RBAC integration', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetDb();
+    await ensureVentasUnblocked();
   });
 
   it('RF-01 login returns 200 with access and refresh tokens', async () => {
