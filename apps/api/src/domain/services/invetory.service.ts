@@ -41,19 +41,12 @@ export type ReservationRecord = {
   reservedAt: string;
 };
 
-/**
- * Inventory service backed by Prisma (PostgreSQL).
- * Lists branches, products, inventory by branch; reserves and releases stock for work orders.
- * All methods are async.
- */
 export class InventoryService {
-  /** Returns all branches. */
   async listBranches(): Promise<BranchRow[]> {
     const rows = await prisma.branch.findMany();
     return rows.map((r) => ({ id: r.id, name: r.name, isMain: r.isMain }));
   }
 
-  /** Returns all products. */
   async listProducts(): Promise<ProductRow[]> {
     const rows = await prisma.product.findMany();
     return rows.map((r) => ({
@@ -64,12 +57,12 @@ export class InventoryService {
     }));
   }
 
-  /** Returns inventory rows for a branch with product name. */
   async listInventory(branchId: string): Promise<Array<InventoryRow & { productName: string }>> {
     const rows = await prisma.inventory.findMany({
       where: { branchId },
       include: { product: true },
     });
+
     return rows.map((r) => ({
       id: r.id,
       branchId: r.branchId,
@@ -81,7 +74,19 @@ export class InventoryService {
     }));
   }
 
-  /** Reserves stock for a work order; throws on validation or insufficient stock. Uses a transaction. */
+  async listAllInventory(): Promise<Array<InventoryRow & { productName: string }>> {
+    const rows = await prisma.inventory.findMany({ include: { product: true } });
+    return rows.map((r) => ({
+      id: r.id,
+      branchId: r.branchId,
+      productId: r.productId,
+      qtyAvailable: r.qtyAvailable,
+      qtyReserved: r.qtyReserved,
+      updatedAt: r.updatedAt.toISOString(),
+      productName: r.product.name,
+    }));
+  }
+
   async reserveForRequest(input: ReserveRequest): Promise<ReservationRecord> {
     if (!input.workOrderId?.trim()) {
       throw new ApiError(400, 'Validation Error', 'workOrderId is required', 'urn:telecom:error:validation');
@@ -103,7 +108,7 @@ export class InventoryService {
       }
     }
 
-    const reservation = await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       const existing = await tx.reservation.findUnique({ where: { workOrderId: input.workOrderId } });
       if (existing) {
         throw new ApiError(
@@ -119,8 +124,11 @@ export class InventoryService {
         const stock = await tx.inventory.findUnique({
           where: { branchId_productId: { branchId: input.branchId, productId: item.productId } },
         });
-        if (!stock || stock.qtyAvailable < item.qty) missing.push(item.productId);
+        if (!stock || stock.qtyAvailable < item.qty) {
+          missing.push(item.productId);
+        }
       }
+
       if (missing.length > 0) {
         throw new ApiError(
           409,
@@ -140,7 +148,6 @@ export class InventoryService {
         });
       }
 
-      const reservedAt = new Date();
       await tx.reservation.create({
         data: {
           workOrderId: input.workOrderId,
@@ -148,17 +155,16 @@ export class InventoryService {
           items: input.items as object,
         },
       });
+
       return {
         workOrderId: input.workOrderId,
         branchId: input.branchId,
         items: input.items,
-        reservedAt: reservedAt.toISOString(),
+        reservedAt: new Date().toISOString(),
       };
     });
-    return reservation;
   }
 
-  /** Releases reservation for a work order and restores stock; throws 404 if reservation not found. */
   async releaseForRequest(workOrderId: string): Promise<ReservationRecord> {
     const reservation = await prisma.reservation.findUnique({ where: { workOrderId } });
     if (!reservation) {
@@ -174,9 +180,7 @@ export class InventoryService {
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
         await tx.inventory.update({
-          where: {
-            branchId_productId: { branchId: reservation.branchId, productId: item.productId },
-          },
+          where: { branchId_productId: { branchId: reservation.branchId, productId: item.productId } },
           data: {
             qtyAvailable: { increment: item.qty },
             qtyReserved: { decrement: item.qty },

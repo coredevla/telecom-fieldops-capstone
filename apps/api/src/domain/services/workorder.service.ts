@@ -1,13 +1,8 @@
 import { ApiError } from '../errors/apiError';
-import type {
-  WorkOrder,
-  WorkOrderStatus,
-  WorkOrderType,
-  WorkOrderItem,
-} from '../models/types';
+import type { WorkOrder, WorkOrderItem, WorkOrderStatus, WorkOrderType } from '../models/types';
 import { workOrderRepository } from '../../infra/repositories/workorder.repo';
 import { inventoryService } from './invetory.service';
-import { validateTransition, allowedTransitions } from '../stateMachine/workOrderStateMachine';
+import { allowedTransitions, validateTransition } from '../stateMachine/workOrderStateMachine';
 import { auditService } from './audit.service';
 import { AUDIT_ACTIONS } from '../models/types';
 
@@ -40,7 +35,11 @@ export const workOrderService = {
   },
 
   async createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
-    const created = await workOrderRepository.create(payload);
+    const created = await workOrderRepository.create({
+      ...payload,
+      createdByUserId: actorUserId ?? undefined,
+    });
+
     await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_CREATED,
@@ -50,6 +49,7 @@ export const workOrderService = {
       after: created as unknown as Record<string, unknown>,
       correlationId,
     });
+
     return created;
   },
 
@@ -64,19 +64,12 @@ export const workOrderService = {
       throw new ApiError(404, 'Not Found', 'Work order not found', 'urn:telecom:error:workorder-not-found');
     }
 
-    // optimistic locking
     if (input.baseVersion !== wo.version) {
-      throw new ApiError(
-        409,
-        'Conflict',
-        'Version mismatch',
-        'urn:telecom:error:version_mismatch',
-      );
+      throw new ApiError(409, 'Conflict', 'Version mismatch', 'urn:telecom:error:version_mismatch');
     }
 
     validateTransition(wo.type, wo.status, input.newStatus);
 
-    // inventory reservation side effect
     if (input.newStatus === 'INVENTORY_RESERVATION' && wo.items && wo.items.length > 0) {
       try {
         await inventoryService.reserveForRequest({
@@ -86,25 +79,17 @@ export const workOrderService = {
         });
       } catch (err) {
         if (err instanceof ApiError && err.message.includes('Insufficient stock')) {
-          throw new ApiError(
-            409,
-            'Conflict',
-            'stock_insufficient',
-            'urn:telecom:error:stock_insufficient',
-          );
+          throw new ApiError(409, 'Conflict', 'stock_insufficient', 'urn:telecom:error:stock_insufficient');
         }
         throw err;
       }
     }
 
-    // RB-05: cancelar debe liberar inventario
     if (input.newStatus === 'CANCELLED') {
       try {
-        inventoryService.releaseForRequest(wo.id);
+        await inventoryService.releaseForRequest(wo.id);
       } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          // no reservation existed, idempotent
-        } else {
+        if (!(err instanceof ApiError && err.status === 404)) {
           throw err;
         }
       }
@@ -115,6 +100,7 @@ export const workOrderService = {
       status: input.newStatus,
       version: wo.version + 1,
     });
+
     if (!updated) {
       throw new ApiError(500, 'Internal Server Error', 'Unable to update work order', 'urn:telecom:error:internal');
     }

@@ -192,11 +192,14 @@ export interface WorkOrder {
   type: WorkOrderType;
   status: WorkOrderStatus;
   customerId: string;
+  createdByUserId?: string;
   branchId?: string;
   planId?: string;
   assignedTechUserId?: string;
   version: number;
   items?: WorkOrderItem[];
+  completedAt?: string | null;
+  cancelledAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
