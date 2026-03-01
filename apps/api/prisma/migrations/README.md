@@ -28,6 +28,8 @@ Si la API en producción usa una base PostgreSQL distinta, **hay que aplicar las
 
 **No uses `npm run dev` en Railway.** En producción el servidor debe arrancar con `npm start`; las migraciones se aplican con el Release Command `npm run release`.
 
+**Nota:** `npm run release` solo aplica el **esquema** (migraciones); no carga datos. Para cargar usuarios/roles/datos iniciales hay que ejecutar **seed** una vez: `npm run seed` (desde `apps/api`).
+
 ---
 
 **Dashboard devuelve 401:** El rol `admin` tiene permiso `*` (incluye `kpis:read`). Un 401 significa que la petición no tiene usuario autenticado (token ausente o inválido). Comprobar que el frontend envía `Authorization: Bearer <token>` y que la URL base de la API en producción es la correcta.
