@@ -97,6 +97,19 @@ export const workOrderService = {
       }
     }
 
+    // RB-05: cancelar debe liberar inventario
+    if (input.newStatus === 'CANCELLED') {
+      try {
+        inventoryService.releaseForRequest(wo.id);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          // no reservation existed, idempotent
+        } else {
+          throw err;
+        }
+      }
+    }
+
     const before = { status: wo.status, version: wo.version };
     const updated = await workOrderRepository.update(id, {
       status: input.newStatus,

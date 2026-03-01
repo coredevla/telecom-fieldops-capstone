@@ -1,20 +1,13 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import InventoryTable from '../components/InventoryTable';
-import ReservationForm from '../components/ReservationForm';
-import { apiClient } from '../services/apiClient';
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import InventoryTable from "../components/InventoryTable";
+import { apiClient } from "../services/apiClient";
+import Layout from "../layouts/Layout";
 
 type Branch = {
   id: string;
   name: string;
   isMain: boolean;
-};
-
-type Product = {
-  id: string;
-  name: string;
-  category: string;
-  isSerialized: boolean;
 };
 
 type InventoryRow = {
@@ -30,22 +23,19 @@ type InventoryRow = {
 export default function InventoryReservationPage() {
   const navigate = useNavigate();
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [inventoryRows, setInventoryRows] = useState<InventoryRow[]>([]);
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [branchRows] = await Promise.all([
-          apiClient.get<Branch[]>('/api/v1/inventory/branches'),
-        ]);
+        const [branchRows] = await Promise.all([apiClient.get<Branch[]>("/api/v1/inventory/branches")]);
         setBranches(branchRows);
-        const firstBranchId = branchRows[0]?.id ?? '';
+        const firstBranchId = branchRows[0]?.id ?? "";
         setSelectedBranchId(firstBranchId);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Error cargando datos');
+        setMessage(error instanceof Error ? error.message : "Error cargando datos");
       }
     };
 
@@ -64,83 +54,51 @@ export default function InventoryReservationPage() {
         );
         setInventoryRows(rows);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Error cargando inventario');
+        setMessage(error instanceof Error ? error.message : "Error cargando inventario");
       }
     };
 
     void loadInventory();
   }, [selectedBranchId]);
 
-  const refreshInventory = async () => {
-    if (!selectedBranchId) {
-      return;
-    }
-    const rows = await apiClient.get<InventoryRow[]>(
-      `/api/v1/inventory?branchId=${encodeURIComponent(selectedBranchId)}`
-    );
-    setInventoryRows(rows);
-  };
-
-  const handleReserve = async (input: { workOrderId: string; productId: string; qty: number }) => {
-    if (!selectedBranchId) {
-      setMessage('Seleccione una sucursal');
-      return;
-    }
-    setLoading(true);
-    setMessage('');
-    try {
-      await apiClient.post('/api/v1/inventory/reservations', {
-        workOrderId: input.workOrderId,
-        branchId: selectedBranchId,
-        items: [{ productId: input.productId, qty: input.qty }],
-      });
-      await refreshInventory();
-      setMessage('Reserva creada correctamente.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo reservar');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRelease = async (workOrderId: string) => {
-    setLoading(true);
-    setMessage('');
-    try {
-      await apiClient.delete(`/api/v1/inventory/reservations/${encodeURIComponent(workOrderId)}`);
-      await refreshInventory();
-      setMessage('Reserva liberada correctamente.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo liberar');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <main style={{ fontFamily: 'sans-serif', padding: '1rem', maxWidth: 960, margin: '0 auto' }}>
-      <h1>RF-07 Reservar inventario para solicitud</h1>
+    <Layout>
+      <div className="min-h-screen bg-gray-100 py-10">
+        <div className="max-w-6xl mx-auto px-6 text-gray-800">
+          <header className="bg-white border border-gray-200 rounded-sm p-6 mb-6">
+            <button onClick={() => navigate("/home")} className="text-sm text-gray-600 hover:text-gray-800 mb-3">
+              Volver al panel principal
+            </button>
+            <h1 className="text-2xl font-semibold text-gray-800">Reserva de inventario</h1>
+            <p className="text-sm text-gray-600 mt-1">Visualiza disponibilidad de equipos por sucursal.</p>
+          </header>
 
-      <section style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'grid', gap: '0.35rem', maxWidth: 360 }}>
-          Sucursal
-          <select
-            value={selectedBranchId}
-            onChange={(event) => setSelectedBranchId(event.target.value)}
-            style={{ padding: '0.45rem 0.55rem', border: '1px solid #ccc', borderRadius: 6 }}
-          >
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+          <section className="bg-white border border-gray-200 rounded-sm p-6 mb-6">
+            <label className="block max-w-sm">
+              <span className="text-sm text-gray-700">Sucursal</span>
+              <select
+                value={selectedBranchId}
+                onChange={(event) => setSelectedBranchId(event.target.value)}
+                className="mt-2 block w-full border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
 
-      {message ? <p style={{ marginTop: '0.75rem', color: 'red' }}>{message}</p> : null}
+          {message ? (
+            <div className="bg-white border border-gray-200 rounded-sm p-4 text-sm text-gray-700 mb-6">{message}</div>
+          ) : null}
 
-      <InventoryTable rows={inventoryRows} />
-    </main>
+          <section className="bg-white border border-gray-200 rounded-sm p-6">
+            <InventoryTable rows={inventoryRows} />
+          </section>
+        </div>
+      </div>
+    </Layout>
   );
 }

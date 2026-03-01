@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { ApiError } from '../domain/errors/apiError';
 import { workOrderService } from '../domain/services/workorder.service';
 import { authenticate } from '../middleware/auth';
 import { requirePermissions } from '../middleware/rbac';
@@ -7,10 +8,20 @@ import { validateBody, validateParams } from '../middleware/validate';
 
 const router = Router();
 
+const WORK_ORDER_TYPES = [
+  'NEW_SERVICE_INSTALL',
+  'CLAIM_TROUBLESHOOT',
+  'PLAN_AND_EQUIPMENT_SALE',
+  'EQUIPMENT_ONLY_SALE',
+  'MONTHLY_PAYMENT',
+  'SERVICE_UPGRADE',
+  'SERVICE_DOWN_OUTAGE',
+] as const;
+
 const workOrderIdParams = z.object({ id: z.string().min(1) });
 
 const createSchema = z.object({
-  type: z.string().min(1),
+  type: z.enum(WORK_ORDER_TYPES),
   customerId: z.string().min(1),
   branchId: z.string().min(1).optional(),
   planId: z.string().min(1).optional(),
@@ -27,7 +38,7 @@ const updateStatusSchema = z.object({
 router.use(authenticate);
 
 router.get(
-  '/work-orders',
+  '/',
   requirePermissions(['workorders:read']),
   async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -40,7 +51,7 @@ router.get(
 );
 
 router.get(
-  '/work-orders/:id',
+  '/:id',
   requirePermissions(['workorders:read']),
   validateParams(workOrderIdParams),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -58,7 +69,7 @@ router.get(
 );
 
 router.post(
-  '/work-orders',
+  '/',
   requirePermissions(['workorders:create']),
   validateBody(createSchema),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -76,7 +87,7 @@ router.post(
 );
 
 router.patch(
-  '/work-orders/:id/status',
+  '/:id/status',
   requirePermissions(['workorders:update-state']),
   validateParams(workOrderIdParams),
   validateBody(updateStatusSchema),

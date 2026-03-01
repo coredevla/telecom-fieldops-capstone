@@ -1,34 +1,24 @@
-/**
- * PlanFormModal.tsx
- * Modal de creación y edición de planes.
- * Tailwind + TypeScript.
- */
-
-import React, { useEffect, useState } from 'react';
-import {
-  Plan, CreatePlanDto,
-  PlanType, Currency,
-  PLAN_TYPE_LABELS,
-} from '../types/catalog';
+import React, { useEffect, useState } from "react";
+import { Plan, CreatePlanDto, PlanType, Currency, PLAN_TYPE_LABELS } from "../types/catalog";
 
 interface PlanFormModalProps {
-  open:     boolean;
-  plan?:    Plan | null;        // null = crear, Plan = editar
-  saving:   boolean;
-  onSave:   (dto: CreatePlanDto) => void;
-  onClose:  () => void;
+  open: boolean;
+  plan?: Plan | null;
+  saving: boolean;
+  onSave: (dto: CreatePlanDto) => void;
+  onClose: () => void;
 }
 
 const EMPTY_FORM: CreatePlanDto = {
-  name:     '',
-  type:     'HOME_INTERNET',
-  price:    0,
-  currency: 'DOP',
+  name: "",
+  type: "HOME_INTERNET",
+  price: 0,
+  currency: "DOP",
   isActive: true,
 };
 
-const PLAN_TYPES: PlanType[]   = ['HOME_INTERNET', 'MOBILE_DATA', 'VOICE', 'BUSINESS'];
-const CURRENCIES: Currency[]   = ['DOP', 'USD'];
+const PLAN_TYPES: PlanType[] = ["HOME_INTERNET", "MOBILE_DATA", "VOICE", "BUSINESS"];
+const CURRENCIES: Currency[] = ["DOP", "USD"];
 
 export function PlanFormModal({ open, plan, saving, onSave, onClose }: PlanFormModalProps) {
   const [form, setForm] = useState<CreatePlanDto>(EMPTY_FORM);
@@ -38,21 +28,25 @@ export function PlanFormModal({ open, plan, saving, onSave, onClose }: PlanFormM
 
   useEffect(() => {
     if (open) {
-      setForm(plan ? {
-        name:     plan.name,
-        type:     plan.type,
-        price:    plan.price,
-        currency: plan.currency,
-        isActive: plan.isActive,
-      } : EMPTY_FORM);
+      setForm(
+        plan
+          ? {
+              name: plan.name,
+              type: plan.type,
+              price: plan.price,
+              currency: plan.currency,
+              isActive: plan.isActive,
+            }
+          : EMPTY_FORM
+      );
       setErrors({});
     }
   }, [open, plan]);
 
   function validate(): boolean {
     const e: typeof errors = {};
-    if (!form.name.trim())       e.name  = 'El nombre es requerido.';
-    if (form.price <= 0)         e.price = 'El precio debe ser mayor a 0.';
+    if (!form.name.trim()) e.name = "El nombre es requerido.";
+    if (form.price <= 0) e.price = "El precio debe ser mayor a 0.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -71,144 +65,101 @@ export function PlanFormModal({ open, plan, saving, onSave, onClose }: PlanFormM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white border border-gray-200 rounded-sm p-6">
+        <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <p className="text-[0.6rem] uppercase tracking-widest text-sky-400 font-medium">
-              {isEditing ? 'Editar plan' : 'Nuevo plan'}
-            </p>
-            <h2 className="text-lg font-bold text-slate-100 tracking-tight">
-              {isEditing ? plan!.name : 'Crear plan de servicio'}
-            </h2>
+            <h2 className="text-2xl font-semibold text-gray-800">{isEditing ? "Editar plan" : "Nuevo plan"}</h2>
+            <p className="text-sm text-gray-600 mt-1">{isEditing ? plan!.name : "Crear plan de servicio"}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-500 hover:text-slate-200 text-xl leading-none transition-colors"
-            aria-label="Cerrar"
+            className="bg-white border border-gray-200 text-gray-800 px-4 py-2 text-sm rounded-sm hover:border-[#002D72]"
           >
-            ✕
+            Cerrar
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
-
-          {/* Nombre */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-              Nombre <span className="text-rose-400">*</span>
-            </label>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-2">
+            <span className="text-sm text-gray-700">Nombre</span>
             <input
               type="text"
               value={form.name}
-              onChange={e => field('name', e.target.value)}
-              placeholder="ej. Internet Hogar 300Mbps"
-              className={`bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-colors ${
-                errors.name ? 'border-rose-500' : 'border-slate-700 focus:border-sky-500'
-              }`}
+              onChange={(e) => field("name", e.target.value)}
+              className="border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
             />
-            {errors.name && <p className="text-xs text-rose-400">{errors.name}</p>}
-          </div>
+            {errors.name && <p className="text-xs text-gray-500">{errors.name}</p>}
+          </label>
 
-          {/* Tipo */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-              Tipo de plan
-            </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm text-gray-700">Tipo de plan</span>
             <select
               value={form.type}
-              onChange={e => field('type', e.target.value as PlanType)}
-              className="bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors"
+              onChange={(e) => field("type", e.target.value as PlanType)}
+              className="border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
             >
-              {PLAN_TYPES.map(t => (
-                <option key={t} value={t}>{PLAN_TYPE_LABELS[t]}</option>
+              {PLAN_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {PLAN_TYPE_LABELS[t]}
+                </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          {/* Precio + Moneda */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-                Precio <span className="text-rose-400">*</span>
-              </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="flex flex-col gap-2">
+              <span className="text-sm text-gray-700">Precio</span>
               <input
                 type="number"
                 min={0}
                 step={0.01}
                 value={form.price}
-                onChange={e => field('price', parseFloat(e.target.value) || 0)}
-                className={`bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors ${
-                  errors.price ? 'border-rose-500' : 'border-slate-700 focus:border-sky-500'
-                }`}
+                onChange={(e) => field("price", parseFloat(e.target.value) || 0)}
+                className="border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
               />
-              {errors.price && <p className="text-xs text-rose-400">{errors.price}</p>}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-                Moneda
-              </label>
+              {errors.price && <p className="text-xs text-gray-500">{errors.price}</p>}
+            </label>
+            <label className="flex flex-col gap-2">
+              <span className="text-sm text-gray-700">Moneda</span>
               <select
                 value={form.currency}
-                onChange={e => field('currency', e.target.value as Currency)}
-                className="bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors"
+                onChange={(e) => field("currency", e.target.value as Currency)}
+                className="border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
               >
-                {CURRENCIES.map(c => (
-                  <option key={c} value={c}>{c}</option>
+                {CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
-            </div>
+            </label>
           </div>
 
-          {/* Estado activo */}
-          <div className="flex items-center justify-between bg-slate-800 rounded-lg px-4 py-3">
-            <div>
-              <p className="text-sm text-slate-200 font-medium">Plan activo</p>
-              <p className="text-xs text-slate-500">Visible para ventas y solicitudes</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.isActive}
-              onClick={() => field('isActive', !form.isActive)}
-              className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-                form.isActive ? 'bg-emerald-500' : 'bg-slate-600'
-              }`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                form.isActive ? 'translate-x-5' : 'translate-x-0'
-              }`} />
-            </button>
-          </div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.isActive}
+              onChange={() => field("isActive", !form.isActive)}
+              className="h-4 w-4 border-gray-300"
+            />
+            <span className="text-sm text-gray-700">Plan activo</span>
+          </label>
 
-          {/* Footer */}
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-400 text-sm font-medium hover:border-slate-500 hover:text-slate-200 transition-all"
+              className="flex-1 bg-white border border-gray-200 text-gray-800 px-5 py-2 text-sm rounded-sm hover:border-[#002D72]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 bg-[#002D72] text-white px-5 py-2 text-sm rounded-sm hover:bg-[#001F4D] disabled:opacity-50"
             >
-              {saving && (
-                <span className="w-3.5 h-3.5 border-2 border-slate-950 border-r-transparent rounded-full animate-spin" />
-              )}
-              {isEditing ? 'Guardar cambios' : 'Crear plan'}
+              {saving ? "Guardando..." : isEditing ? "Guardar cambios" : "Crear plan"}
             </button>
           </div>
         </form>
