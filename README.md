@@ -83,6 +83,16 @@ El frontend está preparado para usar la API en Railway. Solo hace falta definir
 
 Si no defines `VITE_API_URL`, el frontend usa por defecto `http://localhost:3000` (API local). Ver `apps/web/.env.example`.
 
+### Probar work-orders y dashboard KPIs (local vs Railway)
+
+Para comparar respuestas de la API en local y en Railway (y ver si hay 500/502 o errores de esquema):
+
+```bash
+node scripts/probe-work-orders-and-kpis.js
+```
+
+Solo Railway: `PROBE_RAILWAY_ONLY=1 node scripts/probe-work-orders-and-kpis.js`. Requiere usuario seed (admin@telecom.local / Admin123!). Si Railway devuelve HTML en vez de JSON, suele ser 502 (API caída o migraciones pendientes).
+
 ## Base de datos y Prisma (Supabase)
 
 La API usa **Prisma** con PostgreSQL (Supabase). La base de datos se llama **capstone**.
