@@ -9,37 +9,30 @@ import {
 const notFoundError = (id: string) =>
   new ApiError(404, 'Not Found', `No existe producto con id ${id}`, 'urn:telecom:error:product-not-found');
 
+/** Products service: list, get by id, create, update, delete. All methods async. */
 export const productsService = {
-  listProducts(): Product[] {
+  async listProducts(): Promise<Product[]> {
     return productsRepository.listAll();
   },
 
-  getProductById(id: string): Product {
-    const product = productsRepository.findById(id);
-    if (!product) {
-      throw notFoundError(id);
-    }
-
+  async getProductById(id: string): Promise<Product> {
+    const product = await productsRepository.findById(id);
+    if (!product) throw notFoundError(id);
     return product;
   },
 
-  createProduct(input: CreateProductInput): Product {
+  async createProduct(input: CreateProductInput): Promise<Product> {
     return productsRepository.create(input);
   },
 
-  updateProduct(id: string, input: UpdateProductInput): Product {
-    const updated = productsRepository.update(id, input);
-    if (!updated) {
-      throw notFoundError(id);
-    }
-
+  async updateProduct(id: string, input: UpdateProductInput): Promise<Product> {
+    const updated = await productsRepository.update(id, input);
+    if (!updated) throw notFoundError(id);
     return updated;
   },
 
-  deleteProduct(id: string): void {
-    const deleted = productsRepository.delete(id);
-    if (!deleted) {
-      throw notFoundError(id);
-    }
+  async deleteProduct(id: string): Promise<void> {
+    const deleted = await productsRepository.delete(id);
+    if (!deleted) throw notFoundError(id);
   },
 };

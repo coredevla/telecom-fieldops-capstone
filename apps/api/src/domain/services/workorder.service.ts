@@ -25,22 +25,23 @@ export interface UpdateWorkOrderStatusPayload {
 }
 
 export const workOrderService = {
-  listWorkOrders(): Array<WorkOrder & { allowedTransitions: WorkOrderStatus[] }> {
-    return workOrderRepository.listAll().map((wo) => ({
+  async listWorkOrders(): Promise<Array<WorkOrder & { allowedTransitions: WorkOrderStatus[] }>> {
+    const list = await workOrderRepository.listAll();
+    return list.map((wo) => ({
       ...wo,
       allowedTransitions: allowedTransitions(wo.type, wo.status),
     }));
   },
 
-  getWorkOrder(id: string): (WorkOrder & { allowedTransitions: WorkOrderStatus[] }) | null {
-    const wo = workOrderRepository.findById(id);
+  async getWorkOrder(id: string): Promise<(WorkOrder & { allowedTransitions: WorkOrderStatus[] }) | null> {
+    const wo = await workOrderRepository.findById(id);
     if (!wo) return null;
     return { ...wo, allowedTransitions: allowedTransitions(wo.type, wo.status) };
   },
 
-  createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
-    const created = workOrderRepository.create(payload);
-    auditService.record({
+  async createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
+    const created = await workOrderRepository.create(payload);
+    await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_CREATED,
       entityType: 'WorkOrder',
@@ -52,13 +53,13 @@ export const workOrderService = {
     return created;
   },
 
-  updateStatus(
+  async updateStatus(
     id: string,
     input: UpdateWorkOrderStatusPayload,
     actorUserId: string | null,
     correlationId: string,
   ) {
-    const wo = workOrderRepository.findById(id);
+    const wo = await workOrderRepository.findById(id);
     if (!wo) {
       throw new ApiError(404, 'Not Found', 'Work order not found', 'urn:telecom:error:workorder-not-found');
     }
@@ -78,7 +79,7 @@ export const workOrderService = {
     // inventory reservation side effect
     if (input.newStatus === 'INVENTORY_RESERVATION' && wo.items && wo.items.length > 0) {
       try {
-        inventoryService.reserveForRequest({
+        await inventoryService.reserveForRequest({
           workOrderId: wo.id,
           branchId: wo.branchId ?? '',
           items: wo.items,
@@ -110,7 +111,7 @@ export const workOrderService = {
     }
 
     const before = { status: wo.status, version: wo.version };
-    const updated = workOrderRepository.update(id, {
+    const updated = await workOrderRepository.update(id, {
       status: input.newStatus,
       version: wo.version + 1,
     });
@@ -118,7 +119,7 @@ export const workOrderService = {
       throw new ApiError(500, 'Internal Server Error', 'Unable to update work order', 'urn:telecom:error:internal');
     }
 
-    auditService.record({
+    await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_STATUS,
       entityType: 'WorkOrder',

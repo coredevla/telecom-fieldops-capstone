@@ -1,6 +1,5 @@
-﻿import { randomUUID } from 'crypto';
-import fs from 'fs';
-import path from 'path';
+import { randomUUID } from 'crypto';
+import { prisma } from '../db/prisma/prismaClient';
 import type { Product, ProductCategory } from '../../domain/models/types';
 
 export interface CreateProductInput {
@@ -15,84 +14,71 @@ export interface UpdateProductInput {
   isSerialized?: boolean;
 }
 
-interface SeedData {
-  products: Product[];
+/** Maps a Prisma Product row to the domain Product type. */
+function toDomainProduct(row: { id: string; name: string; category: string; isSerialized: boolean }): Product {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category as ProductCategory,
+    isSerialized: row.isSerialized,
+  };
 }
 
-const loadSeedData = (): SeedData => {
-  const candidates = [
-    path.resolve(__dirname, '../../../../../scripts/seed-data.json'), // monorepo: src|dist/infra/repositories -> repo root
-    path.resolve(__dirname, '../../../scripts/seed-data.json'), // container: /app/dist/infra/repositories -> /app/scripts
-  ];
-
-  for (const seedPath of candidates) {
-    try {
-      if (fs.existsSync(seedPath)) {
-        const raw = fs.readFileSync(seedPath, 'utf-8');
-        const data = JSON.parse(raw) as SeedData;
-        if (Array.isArray(data.products)) {
-          return data;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return { products: [] };
-};
-
-const loadSeedProducts = (): Product[] => {
-  const data = loadSeedData();
-  return data.products;
-};
-
-const products: Product[] = loadSeedProducts();
-
+/**
+ * Products repository backed by Prisma (PostgreSQL).
+ * All methods are async.
+ */
 export const productsRepository = {
-  listAll(): Product[] {
-    return products;
+  /** Returns all products. */
+  async listAll(): Promise<Product[]> {
+    const rows = await prisma.product.findMany();
+    return rows.map(toDomainProduct);
   },
 
-  findById(id: string): Product | null {
-    return products.find((product) => product.id === id) ?? null;
+  /** Finds a product by id; returns null if not found. */
+  async findById(id: string): Promise<Product | null> {
+    const row = await prisma.product.findUnique({ where: { id } });
+    return row ? toDomainProduct(row) : null;
   },
 
-  create(input: CreateProductInput): Product {
-    const created: Product = {
-      id: `prod_${randomUUID().slice(0, 8)}`,
-      name: input.name,
-      category: input.category,
-      isSerialized: input.isSerialized,
-    };
-
-    products.push(created);
-    return created;
+  /** Creates a new product with a generated id. */
+  async create(input: CreateProductInput): Promise<Product> {
+    const id = `prod_${randomUUID().slice(0, 8)}`;
+    const created = await prisma.product.create({
+      data: {
+        id,
+        name: input.name,
+        category: input.category,
+        isSerialized: input.isSerialized,
+      },
+    });
+    return toDomainProduct(created);
   },
 
-  update(id: string, input: UpdateProductInput): Product | null {
-    const index = products.findIndex((product) => product.id === id);
-    if (index === -1) {
+  /** Updates an existing product by id; returns null if not found. */
+  async update(id: string, input: UpdateProductInput): Promise<Product | null> {
+    try {
+      const updated = await prisma.product.update({
+        where: { id },
+        data: {
+          ...(input.name != null && { name: input.name }),
+          ...(input.category != null && { category: input.category }),
+          ...(input.isSerialized != null && { isSerialized: input.isSerialized }),
+        },
+      });
+      return toDomainProduct(updated);
+    } catch {
       return null;
     }
-
-    const updated: Product = {
-      ...products[index],
-      ...input,
-    };
-
-    products[index] = updated;
-    return updated;
   },
 
-  delete(id: string): boolean {
-    const index = products.findIndex((product) => product.id === id);
-    if (index === -1) {
+  /** Deletes a product by id; returns true if deleted, false if not found. */
+  async delete(id: string): Promise<boolean> {
+    try {
+      await prisma.product.delete({ where: { id } });
+      return true;
+    } catch {
       return false;
     }
-
-    products.splice(index, 1);
-    return true;
   },
 };
-

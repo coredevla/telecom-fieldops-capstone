@@ -1,6 +1,5 @@
-﻿import { randomUUID } from 'crypto';
-import fs from 'fs';
-import path from 'path';
+import { randomUUID } from 'crypto';
+import { prisma } from '../db/prisma/prismaClient';
 import type { Plan, PlanCategory, PlanCurrency, PlanStatus, PlanType } from '../../domain/models/types';
 
 export interface CreatePlanInput {
@@ -31,201 +30,139 @@ export interface UpdatePlanInput {
   dataLimitGB?: number | null;
 }
 
-interface SeedPlan {
+/** Maps a Prisma Plan row to the domain Plan type (Decimal -> number, dataLimitGb -> dataLimitGB). */
+function toDomainPlan(row: {
   id: string;
   name: string;
-  type: PlanType;
-  price: number;
-  currency: PlanCurrency;
+  type: string;
+  price: { toNumber?: () => number };
+  currency: string;
   isActive: boolean;
+  description: string;
+  category: string;
+  status: string;
+  monthlyPrice: { toNumber?: () => number };
+  downloadSpeedMbps: number | null;
+  uploadSpeedMbps: number | null;
+  dataLimitGb: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): Plan {
+  const priceNum = typeof row.price === 'object' && row.price != null && 'toNumber' in row.price
+    ? (row.price as { toNumber: () => number }).toNumber()
+    : Number(row.price);
+  const monthlyNum = typeof row.monthlyPrice === 'object' && row.monthlyPrice != null && 'toNumber' in row.monthlyPrice
+    ? (row.monthlyPrice as { toNumber: () => number }).toNumber()
+    : Number(row.monthlyPrice);
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type as PlanType,
+    price: priceNum,
+    currency: row.currency as PlanCurrency,
+    isActive: row.isActive,
+    description: row.description,
+    category: row.category as PlanCategory,
+    status: row.status as PlanStatus,
+    monthlyPrice: monthlyNum,
+    downloadSpeedMbps: row.downloadSpeedMbps,
+    uploadSpeedMbps: row.uploadSpeedMbps,
+    dataLimitGB: row.dataLimitGb,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
-interface SeedData {
-  plans: SeedPlan[];
-}
-
-const loadSeedData = (): SeedData => {
-  const candidates = [
-    path.resolve(__dirname, '../../../../../scripts/seed-data.json'), // monorepo: src|dist/infra/repositories -> repo root
-    path.resolve(__dirname, '../../../scripts/seed-data.json'), // container: /app/dist/infra/repositories -> /app/scripts
-  ];
-
-  for (const seedPath of candidates) {
-    try {
-      if (fs.existsSync(seedPath)) {
-        const raw = fs.readFileSync(seedPath, 'utf-8');
-        const data = JSON.parse(raw) as SeedData;
-        if (Array.isArray(data.plans)) {
-          return data;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return { plans: [] };
-};
-
-const typeToCategory: Record<PlanType, PlanCategory> = {
-  HOME_INTERNET: 'RESIDENCIAL',
-  MOBILE_DATA: 'MOVIL',
-  VOICE: 'MOVIL',
-  TV: 'TV',
-  BUSINESS: 'EMPRESARIAL',
-};
-
-const defaultsById: Record<string, Pick<Plan, 'description' | 'downloadSpeedMbps' | 'uploadSpeedMbps' | 'dataLimitGB'>> = {
-  plan_home_200: {
-    description: 'Fibra Ã³ptica simÃ©trica 200 Mbps',
-    downloadSpeedMbps: 200,
-    uploadSpeedMbps: 200,
-    dataLimitGB: null,
-  },
-  plan_home_500: {
-    description: 'Fibra Ã³ptica simÃ©trica 500 Mbps',
-    downloadSpeedMbps: 500,
-    uploadSpeedMbps: 500,
-    dataLimitGB: null,
-  },
-  plan_mobile_20gb: {
-    description: 'Plan mÃ³vil con 20 GB de datos 5G',
-    downloadSpeedMbps: null,
-    uploadSpeedMbps: null,
-    dataLimitGB: 20,
-  },
-  plan_voice_600: {
-    description: '600 minutos nacionales e internacionales',
-    downloadSpeedMbps: null,
-    uploadSpeedMbps: null,
-    dataLimitGB: null,
-  },
-  plan_business_1g: {
-    description: 'Enlace dedicado 1 Gbps para empresas',
-    downloadSpeedMbps: 1000,
-    uploadSpeedMbps: 1000,
-    dataLimitGB: null,
-  },
-};
-
-const defaultPlanFields = (seedPlan: SeedPlan): Pick<Plan, 'description' | 'downloadSpeedMbps' | 'uploadSpeedMbps' | 'dataLimitGB'> => {
-  return (
-    defaultsById[seedPlan.id] ?? {
-      description: seedPlan.name,
-      downloadSpeedMbps: null,
-      uploadSpeedMbps: null,
-      dataLimitGB: null,
-    }
-  );
-};
-
-const loadSeedPlans = (): Plan[] => {
-  const data = loadSeedData();
-  const now = new Date().toISOString();
-
-  return data.plans.map((seedPlan) => {
-    const defaults = defaultPlanFields(seedPlan);
-    return {
-      id: seedPlan.id,
-      name: seedPlan.name,
-      type: seedPlan.type,
-      price: seedPlan.price,
-      currency: seedPlan.currency,
-      isActive: seedPlan.isActive,
-      description: defaults.description,
-      category: typeToCategory[seedPlan.type],
-      status: seedPlan.isActive ? 'ACTIVE' : 'INACTIVE',
-      monthlyPrice: seedPlan.price,
-      downloadSpeedMbps: defaults.downloadSpeedMbps,
-      uploadSpeedMbps: defaults.uploadSpeedMbps,
-      dataLimitGB: defaults.dataLimitGB,
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
-};
-
-const plans: Plan[] = loadSeedPlans();
-
+/**
+ * Plans repository backed by Prisma (PostgreSQL).
+ * All methods are async.
+ */
 export const plansRepository = {
-  listAll(): Plan[] {
-    return plans;
+  /** Returns all plans ordered by creation date. */
+  async listAll(): Promise<Plan[]> {
+    const rows = await prisma.plan.findMany({ orderBy: { createdAt: 'asc' } });
+    return rows.map(toDomainPlan);
   },
 
-  findById(id: string): Plan | null {
-    return plans.find((plan) => plan.id === id) ?? null;
+  /** Finds a plan by id; returns null if not found. */
+  async findById(id: string): Promise<Plan | null> {
+    const row = await prisma.plan.findUnique({ where: { id } });
+    return row ? toDomainPlan(row) : null;
   },
 
-  create(input: CreatePlanInput): Plan {
-    const now = new Date().toISOString();
+  /** Creates a new plan with a generated id. */
+  async create(input: CreatePlanInput): Promise<Plan> {
+    const id = `plan_${randomUUID().slice(0, 8)}`;
     const isActive = input.isActive ?? true;
-
-    const created: Plan = {
-      id: `plan_${randomUUID().slice(0, 8)}`,
-      name: input.name,
-      type: input.type,
-      price: input.price,
-      currency: input.currency,
-      isActive,
-      description: input.description ?? '',
-      category: input.category ?? 'RESIDENCIAL',
-      status: isActive ? 'ACTIVE' : 'INACTIVE',
-      monthlyPrice: input.price,
-      downloadSpeedMbps: input.downloadSpeedMbps ?? null,
-      uploadSpeedMbps: input.uploadSpeedMbps ?? null,
-      dataLimitGB: input.dataLimitGB ?? null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    plans.push(created);
-    return created;
+    const created = await prisma.plan.create({
+      data: {
+        id,
+        name: input.name,
+        type: input.type,
+        price: input.price,
+        currency: input.currency,
+        isActive,
+        description: input.description ?? '',
+        category: input.category ?? 'RESIDENCIAL',
+        status: isActive ? 'ACTIVE' : 'INACTIVE',
+        monthlyPrice: input.price,
+        downloadSpeedMbps: input.downloadSpeedMbps ?? null,
+        uploadSpeedMbps: input.uploadSpeedMbps ?? null,
+        dataLimitGb: input.dataLimitGB ?? null,
+      },
+    });
+    return toDomainPlan(created);
   },
 
-  update(id: string, input: UpdatePlanInput): Plan | null {
-    const index = plans.findIndex((plan) => plan.id === id);
-    if (index === -1) {
-      return null;
+  /** Updates an existing plan by id; returns null if not found. */
+  async update(id: string, input: UpdatePlanInput): Promise<Plan | null> {
+    const current = await this.findById(id);
+    if (!current) return null;
+
+    const data: Record<string, unknown> = {};
+    if (input.name != null) data.name = input.name;
+    if (input.type != null) data.type = input.type;
+    if (input.price != null) data.price = input.price;
+    if (input.currency != null) data.currency = input.currency;
+    if (input.description != null) data.description = input.description;
+    if (input.category != null) data.category = input.category;
+    if (input.downloadSpeedMbps !== undefined) data.downloadSpeedMbps = input.downloadSpeedMbps;
+    if (input.uploadSpeedMbps !== undefined) data.uploadSpeedMbps = input.uploadSpeedMbps;
+    if (input.dataLimitGB !== undefined) data.dataLimitGb = input.dataLimitGB;
+    if (typeof input.isActive === 'boolean') {
+      data.isActive = input.isActive;
+      data.status = input.isActive ? 'ACTIVE' : 'INACTIVE';
+    } else if (input.status != null) {
+      data.status = input.status;
+      data.isActive = input.status === 'ACTIVE';
     }
+    if (input.monthlyPrice != null) data.monthlyPrice = input.monthlyPrice;
+    else if (input.price != null) data.monthlyPrice = input.price;
 
-    const payload = { ...input };
-
-    if (typeof payload.isActive === 'boolean') {
-      payload.status = payload.isActive ? 'ACTIVE' : 'INACTIVE';
-    } else if (payload.status) {
-      payload.isActive = payload.status === 'ACTIVE';
-    }
-
-    if (typeof payload.price === 'number' && typeof payload.monthlyPrice !== 'number') {
-      payload.monthlyPrice = payload.price;
-    }
-
-    const updated: Plan = {
-      ...plans[index],
-      ...payload,
-      updatedAt: new Date().toISOString(),
-    };
-
-    plans[index] = updated;
-    return updated;
+    const updated = await prisma.plan.update({
+      where: { id },
+      data: data as any,
+    });
+    return toDomainPlan(updated);
   },
 
-  activate(id: string): Plan | null {
+  /** Sets plan active; returns updated plan or null if not found. */
+  async activate(id: string): Promise<Plan | null> {
     return this.update(id, { isActive: true, status: 'ACTIVE' });
   },
 
-  deactivate(id: string): Plan | null {
+  /** Sets plan inactive; returns updated plan or null if not found. */
+  async deactivate(id: string): Promise<Plan | null> {
     return this.update(id, { isActive: false, status: 'INACTIVE' });
   },
 
-  delete(id: string): boolean {
-    const index = plans.findIndex((plan) => plan.id === id);
-    if (index === -1) {
+  /** Deletes a plan by id; returns true if deleted, false if not found. */
+  async delete(id: string): Promise<boolean> {
+    try {
+      await prisma.plan.delete({ where: { id } });
+      return true;
+    } catch {
       return false;
     }
-
-    plans.splice(index, 1);
-    return true;
   },
 };
-

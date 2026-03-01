@@ -15,9 +15,14 @@ interface RecordAuditInput {
   correlationId: string;
 }
 
+/**
+ * Audit service: record events and query by filters, entity, user, or date range.
+ * All methods are async and use the Prisma-backed audit repository.
+ */
 export const auditService = {
-  record(input: RecordAuditInput): void {
-    auditRepository.insert({
+  /** Records an audit event with generated id and current timestamp. */
+  async record(input: RecordAuditInput): Promise<void> {
+    await auditRepository.insert({
       id: `aud-${uuidv4()}`,
       at: new Date().toISOString(),
       actorUserId: input.actorUserId,
@@ -30,23 +35,28 @@ export const auditService = {
     });
   },
 
-  list(opts?: ListAuditOptions) {
+  /** Lists audit events with optional filters and pagination. */
+  async list(opts?: ListAuditOptions) {
     return auditRepository.list(opts);
   },
 
-  getById(id: string) {
+  /** Returns a single audit event by id, or undefined if not found. */
+  async getById(id: string) {
     return auditRepository.getById(id);
   },
 
-  getHistory(entityType: string, entityId: string) {
+  /** Returns full history for an entity type and id. */
+  async getHistory(entityType: string, entityId: string) {
     return auditRepository.getHistory(entityType, entityId);
   },
 
-  getByUser(actorUserId: string, limit?: number) {
+  /** Returns events by actor user id, optionally limited. */
+  async getByUser(actorUserId: string, limit?: number) {
     return auditRepository.getByUser(actorUserId, limit);
   },
 
-  getByDateRange(from: string | Date, to: string | Date) {
+  /** Returns events within a date range. */
+  async getByDateRange(from: string | Date, to: string | Date) {
     return auditRepository.getByDateRange(from, to);
   },
 };

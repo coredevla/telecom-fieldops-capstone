@@ -18,6 +18,7 @@ export interface UpdateUserPayload {
   blocked?: boolean;
 }
 
+/** Maps internal user shape to public API response (no passwordHash). */
 const toPublicUser = (input: {
   id: string;
   email: string;
@@ -30,17 +31,25 @@ const toPublicUser = (input: {
   roles: [...input.roles],
 });
 
+/**
+ * User management service: list, create, update, block, permissions.
+ * All methods are async and use the Prisma-backed user repository.
+ */
 export const userService = {
-  listUsers(): UserPublic[] {
-    return userRepository.listUsers().map(toPublicUser);
+  /** Returns all users as public DTOs. */
+  async listUsers(): Promise<UserPublic[]> {
+    const users = await userRepository.listUsers();
+    return users.map(toPublicUser);
   },
 
-  listRoles() {
+  /** Returns all roles. */
+  async listRoles() {
     return userRepository.listRoles();
   },
 
-  createUser(payload: CreateUserPayload): UserPublic {
-    const existing = userRepository.findByEmail(payload.email);
+  /** Creates a new user; throws on duplicate email or invalid roles. */
+  async createUser(payload: CreateUserPayload): Promise<UserPublic> {
+    const existing = await userRepository.findByEmail(payload.email);
     if (existing) {
       throw new ApiError(
         409,
@@ -50,7 +59,7 @@ export const userService = {
       );
     }
 
-    if (!userRepository.validateRoleNames(payload.roles)) {
+    if (!(await userRepository.validateRoleNames(payload.roles))) {
       throw new ApiError(
         409,
         'Conflict',
@@ -60,7 +69,7 @@ export const userService = {
     }
 
     const passwordHash = bcrypt.hashSync(payload.password, env.auth.bcryptRounds);
-    const created = userRepository.create({
+    const created = await userRepository.create({
       email: payload.email,
       passwordHash,
       roles: payload.roles,
@@ -69,14 +78,20 @@ export const userService = {
     return toPublicUser(created);
   },
 
-  updateUser(userId: string, payload: UpdateUserPayload, actorUserId: string, correlationId: string): UserPublic {
-    const previous = userRepository.findById(userId);
+  /** Updates a user by id; throws 404 if not found, 409 on duplicate email or invalid roles. */
+  async updateUser(
+    userId: string,
+    payload: UpdateUserPayload,
+    actorUserId: string,
+    correlationId: string,
+  ): Promise<UserPublic> {
+    const previous = await userRepository.findById(userId);
     if (!previous) {
       throw new ApiError(404, 'Not Found', 'User not found.', 'urn:telecom:error:user-not-found');
     }
 
     if (payload.email && payload.email !== previous.email) {
-      const existingWithEmail = userRepository.findByEmail(payload.email);
+      const existingWithEmail = await userRepository.findByEmail(payload.email);
       if (existingWithEmail && existingWithEmail.id !== userId) {
         throw new ApiError(
           409,
@@ -87,7 +102,7 @@ export const userService = {
       }
     }
 
-    if (payload.roles && !userRepository.validateRoleNames(payload.roles)) {
+    if (payload.roles && !(await userRepository.validateRoleNames(payload.roles))) {
       throw new ApiError(
         409,
         'Conflict',
@@ -96,7 +111,7 @@ export const userService = {
       );
     }
 
-    const updated = userRepository.update(userId, {
+    const updated = await userRepository.update(userId, {
       ...(payload.email ? { email: payload.email } : {}),
       ...(payload.password
         ? { passwordHash: bcrypt.hashSync(payload.password, env.auth.bcryptRounds) }
@@ -115,7 +130,7 @@ export const userService = {
         payload.roles.some((role, idx) => role !== previous.roles[idx]));
 
     if (rolesChanged) {
-      auditService.record({
+      await auditService.record({
         actorUserId,
         action: AUDIT_ACTIONS.ROLE_ASSIGNED,
         entityType: 'user',
@@ -129,19 +144,20 @@ export const userService = {
     return toPublicUser(updated);
   },
 
-  blockUser(userId: string, actorUserId: string, correlationId: string): UserPublic {
-    const previous = userRepository.findById(userId);
+  /** Blocks a user and records audit event; throws 404 if not found. */
+  async blockUser(userId: string, actorUserId: string, correlationId: string): Promise<UserPublic> {
+    const previous = await userRepository.findById(userId);
     if (!previous) {
       throw new ApiError(404, 'Not Found', 'User not found.', 'urn:telecom:error:user-not-found');
     }
 
-    const updated = userRepository.block(userId);
+    const updated = await userRepository.block(userId);
 
     if (!updated) {
       throw new ApiError(404, 'Not Found', 'User not found.', 'urn:telecom:error:user-not-found');
     }
 
-    auditService.record({
+    await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.USER_BLOCKED,
       entityType: 'user',
@@ -154,12 +170,12 @@ export const userService = {
     return toPublicUser(updated);
   },
 
-  getUserPermissions(userId: string): string[] {
-    const user = userRepository.findById(userId);
+  /** Returns permission keys for the given user; empty array if user not found. */
+  async getUserPermissions(userId: string): Promise<string[]> {
+    const user = await userRepository.findById(userId);
     if (!user) {
       return [];
     }
-
     return userRepository.getPermissionKeysForRoles(user.roles);
   },
 };

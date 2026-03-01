@@ -40,9 +40,13 @@ router.use(authenticate);
 router.get(
   '/',
   requirePermissions(['workorders:read']),
-  (_req: Request, res: Response) => {
-    const list = workOrderService.listWorkOrders();
-    res.status(200).json(list);
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const list = await workOrderService.listWorkOrders();
+      res.status(200).json(list);
+    } catch (err) {
+      next(err);
+    }
   },
 );
 
@@ -50,13 +54,17 @@ router.get(
   '/:id',
   requirePermissions(['workorders:read']),
   validateParams(workOrderIdParams),
-  (req: Request, res: Response, next: NextFunction) => {
-    const wo = workOrderService.getWorkOrder(req.params.id);
-    if (!wo) {
-      next(new ApiError(404, 'Not Found', 'Work order not found', 'urn:telecom:error:workorder-not-found'));
-      return;
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const wo = await workOrderService.getWorkOrder(req.params.id);
+      if (!wo) {
+        res.status(404).json({ message: 'Work order not found' });
+        return;
+      }
+      res.status(200).json(wo);
+    } catch (err) {
+      next(err);
     }
-    res.status(200).json(wo);
   },
 );
 
@@ -64,13 +72,17 @@ router.post(
   '/',
   requirePermissions(['workorders:create']),
   validateBody(createSchema),
-  (req: Request, res: Response) => {
-    const created = workOrderService.createWorkOrder(
-      req.body,
-      req.user?.id ?? null,
-      req.correlationId,
-    );
-    res.status(201).json(created);
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = await workOrderService.createWorkOrder(
+        req.body,
+        req.user?.id ?? null,
+        req.correlationId,
+      );
+      res.status(201).json(created);
+    } catch (err) {
+      next(err);
+    }
   },
 );
 
@@ -79,9 +91,9 @@ router.patch(
   requirePermissions(['workorders:update-state']),
   validateParams(workOrderIdParams),
   validateBody(updateStatusSchema),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const updated = workOrderService.updateStatus(
+      const updated = await workOrderService.updateStatus(
         req.params.id,
         req.body,
         req.user?.id ?? null,
