@@ -52,7 +52,7 @@ En el proyecto de Railway configura estas **variables de entorno**:
 
 | Variable | Obligatoria | Descripción |
 |----------|-------------|-------------|
-| **DATABASE_URL** | Sí | URL de PostgreSQL. **Supabase (pooler):** pega la URI del "Transaction pooler" (puerto 6543); la app añade `pgbouncer=true` si falta (necesario para evitar 500 con el pooler). |
+| **DATABASE_URL** | Sí | URL de PostgreSQL. **Supabase (pooler):** usa la URI del "Transaction pooler" (puerto 6543) y añade `?pgbouncer=true&sslmode=require&uselibpqcompat=true` (ver .env.example). Sin ellos, login da 500. |
 | **JWT_ACCESS_SECRET** | Sí | Secreto para access tokens (ej: una frase larga o `openssl rand -hex 32`) |
 | **JWT_REFRESH_SECRET** | Sí | Secreto para refresh tokens (diferente al anterior) |
 | JWT_ISSUER | No | Por defecto `telecom-fieldops-api` |
@@ -66,7 +66,7 @@ npm run migrate
 npm run seed
 ```
 
-Si no ejecutas migrate, las tablas no existen y el login devuelve 500. Si no ejecutas seed, no habrá usuario `admin@telecom.local` (401 en vez de 500). **Error 500 con Supabase pooler (6543):** el pooler en modo transacción no admite prepared statements; la app detecta URLs de `pooler.supabase.com:6543` y añade `pgbouncer=true` automáticamente si no está.
+Si no ejecutas migrate, las tablas no existen y el login devuelve 500. Si no ejecutas seed, no habrá usuario `admin@telecom.local` (401 en vez de 500). **Error 500 con Supabase pooler (6543):** la URL debe incluir `pgbouncer=true` y `uselibpqcompat=true` (ver .env.example).
 
 En los logs de Railway deberías ver "Database connection OK" al arrancar; si ves "Database ping failed at startup", revisa `DATABASE_URL`. Si el login sigue fallando, en el log aparecerá el mensaje de error real (error, errorName, code) para diagnosticar.
 
@@ -91,7 +91,7 @@ El proyecto ya tiene el schema y la migración inicial que crea todas las tablas
 
 1. **Variables de entorno**  
    Copia `apps/api/.env.example` a `apps/api/.env` y rellena con tu proyecto Supabase:
-   - **`DATABASE_URL`**: conexión a la base **capstone** (pooler Supabase puerto 6543 o conexión directa; la app y las migraciones usan solo esta URL).
+   - **`DATABASE_URL`**: conexión a la base **capstone**. Si usas Supabase transaction pooler (puerto 6543), incluye `?pgbouncer=true&sslmode=require&uselibpqcompat=true` en la URL.
    Opcional: **`SHADOW_DATABASE_URL`** para `prisma migrate dev` (otra base temporal); la app y `npm run migrate` usan solo **capstone** vía `DATABASE_URL`.
    El `.env` no se sube al repositorio (está en `.gitignore`).
 
