@@ -2,6 +2,7 @@ import request from 'supertest';
 import app from '../src/infra/app';
 import { resetDb } from '../src/infra/db/connection';
 import { auditService } from '../src/domain/services/audit.service';
+import type { AuditEvent } from '../src/domain/models/types';
 
 const login = async (email: string, password: string) => {
   return request(app).post('/api/v1/auth/login').send({ email, password });
@@ -80,8 +81,8 @@ describe('Auth and RBAC integration', () => {
   it('Audit event is created for login (AUD-01 USERLOGIN)', async () => {
     await login('admin@telecom.local', 'Admin123!');
 
-    const { items: audits } = auditService.list();
-    const hasLoginAudit = audits.some((entry) => entry.action === 'AUD-01 USERLOGIN');
+    const { items: audits } = await auditService.list();
+    const hasLoginAudit = audits.some((entry: AuditEvent) => entry.action === 'AUD-01 USERLOGIN');
 
     expect(hasLoginAudit).toBe(true);
   });
