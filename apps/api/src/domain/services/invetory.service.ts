@@ -1,8 +1,20 @@
-import fs from 'fs';
-import path from 'path';
 import { ApiError } from '../errors/apiError';
+import { prisma } from '../../infra/db/prisma/prismaClient';
 
-type InventoryRow = {
+export type BranchRow = {
+  id: string;
+  name: string;
+  isMain: boolean;
+};
+
+export type ProductRow = {
+  id: string;
+  name: string;
+  category: string;
+  isSerialized: boolean;
+};
+
+export type InventoryRow = {
   id: string;
   branchId: string;
   productId: string;
@@ -11,201 +23,175 @@ type InventoryRow = {
   updatedAt: string;
 };
 
-type ProductRow = {
-  id: string;
-  name: string;
-  category: string;
-  isSerialized: boolean;
-};
-
-type BranchRow = {
-  id: string;
-  name: string;
-  isMain: boolean;
-};
-
-type SeedData = {
-  products: ProductRow[];
-  inventory: Array<{
-    id: string;
-    branchId: string;
-    productId: string;
-    qtyAvailable: number;
-    qtyReserved: number;
-  }>;
-  branches: BranchRow[];
-};
-
-type ReservationItemInput = {
+export type ReservationItemInput = {
   productId: string;
   qty: number;
 };
 
-type ReserveRequest = {
+export type ReserveRequest = {
   workOrderId: string;
   branchId: string;
   items: ReservationItemInput[];
 };
 
-type ReservationRecord = {
+export type ReservationRecord = {
   workOrderId: string;
   branchId: string;
   items: ReservationItemInput[];
   reservedAt: string;
 };
 
+/**
+ * Inventory service backed by Prisma (PostgreSQL).
+ * Lists branches, products, inventory by branch; reserves and releases stock for work orders.
+ * All methods are async.
+ */
 export class InventoryService {
-  private readonly products: ProductRow[];
-  private readonly branches: BranchRow[];
-  private readonly inventory: InventoryRow[];
-  private readonly reservations = new Map<string, ReservationRecord>();
+  /** Returns all branches. */
+  async listBranches(): Promise<BranchRow[]> {
+    const rows = await prisma.branch.findMany();
+    return rows.map((r) => ({ id: r.id, name: r.name, isMain: r.isMain }));
+  }
 
-  constructor() {
-    const data = this.loadSeedData();
-    const now = new Date().toISOString();
-    this.products = data.products;
-    this.branches = data.branches;
-    this.inventory = data.inventory.map((item) => ({
-      ...item,
-      updatedAt: now
+  /** Returns all products. */
+  async listProducts(): Promise<ProductRow[]> {
+    const rows = await prisma.product.findMany();
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      isSerialized: r.isSerialized,
     }));
   }
 
-  listBranches(): BranchRow[] {
-    return this.branches;
+  /** Returns inventory rows for a branch with product name. */
+  async listInventory(branchId: string): Promise<Array<InventoryRow & { productName: string }>> {
+    const rows = await prisma.inventory.findMany({
+      where: { branchId },
+      include: { product: true },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      branchId: r.branchId,
+      productId: r.productId,
+      qtyAvailable: r.qtyAvailable,
+      qtyReserved: r.qtyReserved,
+      updatedAt: r.updatedAt.toISOString(),
+      productName: r.product.name,
+    }));
   }
 
-  listProducts(): ProductRow[] {
-    return this.products;
-  }
-
-  listInventory(branchId: string): Array<InventoryRow & { productName: string }> {
-    return this.inventory
-      .filter((row) => row.branchId === branchId)
-      .map((row) => {
-        const product = this.products.find((p) => p.id === row.productId);
-        return {
-          ...row,
-          productName: product?.name ?? row.productId
-        };
-      });
-  }
-
-  reserveForRequest(input: ReserveRequest): ReservationRecord {
-    if (!input.workOrderId.trim()) {
+  /** Reserves stock for a work order; throws on validation or insufficient stock. Uses a transaction. */
+  async reserveForRequest(input: ReserveRequest): Promise<ReservationRecord> {
+    if (!input.workOrderId?.trim()) {
       throw new ApiError(400, 'Validation Error', 'workOrderId is required', 'urn:telecom:error:validation');
     }
-    if (!input.branchId.trim()) {
+    if (!input.branchId?.trim()) {
       throw new ApiError(400, 'Validation Error', 'branchId is required', 'urn:telecom:error:validation');
     }
     if (!Array.isArray(input.items) || input.items.length === 0) {
       throw new ApiError(400, 'Validation Error', 'At least one item is required', 'urn:telecom:error:validation');
     }
-    if (this.reservations.has(input.workOrderId)) {
-      throw new ApiError(
-        409,
-        'Conflict',
-        `Work order ${input.workOrderId} already has a reservation`,
-        'urn:telecom:error:inventory-reservation-conflict'
-      );
-    }
-
-    const missing: string[] = [];
     for (const item of input.items) {
       if (!item.productId || item.qty <= 0) {
         throw new ApiError(
           400,
           'Validation Error',
           'Each item must include productId and qty > 0',
-          'urn:telecom:error:validation'
+          'urn:telecom:error:validation',
         );
       }
-      const stock = this.inventory.find(
-        (row) => row.branchId === input.branchId && row.productId === item.productId
-      );
-      if (!stock || stock.qtyAvailable < item.qty) {
-        missing.push(item.productId);
+    }
+
+    const reservation = await prisma.$transaction(async (tx) => {
+      const existing = await tx.reservation.findUnique({ where: { workOrderId: input.workOrderId } });
+      if (existing) {
+        throw new ApiError(
+          409,
+          'Conflict',
+          `Work order ${input.workOrderId} already has a reservation`,
+          'urn:telecom:error:inventory-reservation-conflict',
+        );
       }
-    }
 
-    if (missing.length > 0) {
-      throw new ApiError(
-        409,
-        'Conflict',
-        `Insufficient stock for products: ${missing.join(', ')} in branch ${input.branchId}`,
-        'urn:telecom:error:inventory-insufficient-stock'
-      );
-    }
-
-    for (const item of input.items) {
-      const stock = this.inventory.find(
-        (row) => row.branchId === input.branchId && row.productId === item.productId
-      );
-      if (!stock) {
-        continue;
+      const missing: string[] = [];
+      for (const item of input.items) {
+        const stock = await tx.inventory.findUnique({
+          where: { branchId_productId: { branchId: input.branchId, productId: item.productId } },
+        });
+        if (!stock || stock.qtyAvailable < item.qty) missing.push(item.productId);
       }
-      stock.qtyAvailable -= item.qty;
-      stock.qtyReserved += item.qty;
-      stock.updatedAt = new Date().toISOString();
-    }
+      if (missing.length > 0) {
+        throw new ApiError(
+          409,
+          'Conflict',
+          `Insufficient stock for products: ${missing.join(', ')} in branch ${input.branchId}`,
+          'urn:telecom:error:inventory-insufficient-stock',
+        );
+      }
 
-    const reservation: ReservationRecord = {
-      workOrderId: input.workOrderId,
-      branchId: input.branchId,
-      items: input.items,
-      reservedAt: new Date().toISOString()
-    };
-    this.reservations.set(input.workOrderId, reservation);
+      for (const item of input.items) {
+        await tx.inventory.update({
+          where: { branchId_productId: { branchId: input.branchId, productId: item.productId } },
+          data: {
+            qtyAvailable: { decrement: item.qty },
+            qtyReserved: { increment: item.qty },
+          },
+        });
+      }
+
+      const reservedAt = new Date();
+      await tx.reservation.create({
+        data: {
+          workOrderId: input.workOrderId,
+          branchId: input.branchId,
+          items: input.items as object,
+        },
+      });
+      return {
+        workOrderId: input.workOrderId,
+        branchId: input.branchId,
+        items: input.items,
+        reservedAt: reservedAt.toISOString(),
+      };
+    });
     return reservation;
   }
 
-  releaseForRequest(workOrderId: string): ReservationRecord {
-    const reservation = this.reservations.get(workOrderId);
+  /** Releases reservation for a work order and restores stock; throws 404 if reservation not found. */
+  async releaseForRequest(workOrderId: string): Promise<ReservationRecord> {
+    const reservation = await prisma.reservation.findUnique({ where: { workOrderId } });
     if (!reservation) {
       throw new ApiError(
         404,
         'Not Found',
         `Reservation for ${workOrderId} was not found`,
-        'urn:telecom:error:inventory-reservation-not-found'
+        'urn:telecom:error:inventory-reservation-not-found',
       );
     }
 
-    for (const item of reservation.items) {
-      const stock = this.inventory.find(
-        (row) => row.branchId === reservation.branchId && row.productId === item.productId
-      );
-      if (!stock) {
-        continue;
+    const items = (reservation.items as ReservationItemInput[]) ?? [];
+    await prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        await tx.inventory.update({
+          where: {
+            branchId_productId: { branchId: reservation.branchId, productId: item.productId },
+          },
+          data: {
+            qtyAvailable: { increment: item.qty },
+            qtyReserved: { decrement: item.qty },
+          },
+        });
       }
-      stock.qtyAvailable += item.qty;
-      stock.qtyReserved -= item.qty;
-      stock.updatedAt = new Date().toISOString();
-    }
+      await tx.reservation.delete({ where: { workOrderId } });
+    });
 
-    this.reservations.delete(workOrderId);
-    return reservation;
-  }
-
-  private loadSeedData(): SeedData {
-    const candidates = [
-      process.env.SEED_DATA_PATH,
-      path.resolve(__dirname, '../../../../../scripts/seed-data.json'), // monorepo: dist/domain/services -> repo root
-      path.resolve(__dirname, '../../../scripts/seed-data.json')     // container: dist/domain/services -> /app, then scripts/
-    ].filter(Boolean) as string[];
-
-    for (const seedPath of candidates) {
-      try {
-        if (fs.existsSync(seedPath)) {
-          const raw = fs.readFileSync(seedPath, 'utf-8');
-          return JSON.parse(raw) as SeedData;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    // Fallback when file is missing (e.g. in container without scripts copied): start with empty data
-    return { products: [], inventory: [], branches: [] };
+    return {
+      workOrderId: reservation.workOrderId,
+      branchId: reservation.branchId,
+      items,
+      reservedAt: reservation.reservedAt.toISOString(),
+    };
   }
 }
 

@@ -30,22 +30,38 @@ const releaseReservationParamsSchema = z.object({
   workOrderId: z.string().min(1),
 });
 
-router.get('/inventory/branches', requirePermissions(['inventory:read']), (_req: Request, res: Response) => {
-  res.status(200).json(inventoryService.listBranches());
-});
-
-router.get('/inventory/products', requirePermissions(['inventory:read']), (_req: Request, res: Response) => {
-  res.status(200).json(inventoryService.listProducts());
-});
-
-router.get('/inventory', requirePermissions(['inventory:read']), validate(inventoryQuerySchema, 'query'), (req: Request, res: Response) => {
-  const branchId = String(req.query.branchId);
-  res.status(200).json(inventoryService.listInventory(branchId));
-});
-
-router.post('/inventory/reservations', validateBody(reserveInventorySchema), (req: Request, res: Response, next: NextFunction) => {
+/** GET /inventory/branches: list all branches. */
+router.get('/inventory/branches', requirePermissions(['inventory:read']), async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = inventoryService.reserveForRequest({
+    res.status(200).json(await inventoryService.listBranches());
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /inventory/products: list all products. */
+router.get('/inventory/products', requirePermissions(['inventory:read']), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(200).json(await inventoryService.listProducts());
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /inventory?branchId=: list inventory for a branch. */
+router.get('/inventory', requirePermissions(['inventory:read']), validate(inventoryQuerySchema, 'query'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const branchId = String(req.query.branchId);
+    res.status(200).json(await inventoryService.listInventory(branchId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /inventory/reservations: reserve stock for a work order. */
+router.post('/inventory/reservations', validateBody(reserveInventorySchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await inventoryService.reserveForRequest({
       workOrderId: req.body.workOrderId,
       branchId: req.body.branchId,
       items: req.body.items,
@@ -56,14 +72,13 @@ router.post('/inventory/reservations', validateBody(reserveInventorySchema), (re
   }
 });
 
-router.delete('/inventory/reservations/:workOrderId', (req: Request, res: Response) => {
+/** DELETE /inventory/reservations/:workOrderId: release reservation. */
+router.delete('/inventory/reservations/:workOrderId', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = inventoryService.releaseForRequest(req.params.workOrderId);
+    const result = await inventoryService.releaseForRequest(req.params.workOrderId);
     res.status(200).json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unexpected error';
-    const status = message.includes('not found') ? 404 : 400;
-    res.status(status).json({ message });
+    next(error);
   }
 });
 
