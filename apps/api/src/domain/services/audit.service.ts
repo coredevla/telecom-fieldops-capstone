@@ -16,7 +16,8 @@ interface RecordAuditInput {
 }
 
 export const auditService = {
-  record(input: RecordAuditInput): void {
+  /** Records an audit event (async for compatibility with Prisma-based callers). */
+  async record(input: RecordAuditInput): Promise<void> {
     auditRepository.insert({
       id: `aud-${uuidv4()}`,
       at: new Date().toISOString(),

@@ -12,26 +12,36 @@ import { userRepository } from '../../infra/repositories/user.repo';
 import { ApiError } from '../errors/apiError';
 import { auditService } from './audit.service';
 
+/** Current Unix timestamp in seconds (for token exp fallback). */
 const unixNow = (): number => Math.floor(Date.now() / 1000);
 
-const getUserOrThrow = (userId: string) => {
-  const user = userRepository.findById(userId);
+/** Loads user by id or throws 401 if not found. */
+const getUserOrThrow = async (userId: string) => {
+  const user = await userRepository.findById(userId);
   if (!user) {
     throw new ApiError(401, 'Unauthorized', 'Invalid token subject.', 'urn:telecom:error:invalid-token');
   }
-
   return user;
 };
 
-const validateRefreshTokenNotRevoked = (jti: string): void => {
-  if (userRepository.isRefreshTokenRevoked(jti)) {
+/** Throws 401 if the given refresh token jti has been revoked. */
+const validateRefreshTokenNotRevoked = async (jti: string): Promise<void> => {
+  if (await userRepository.isRefreshTokenRevoked(jti)) {
     throw new ApiError(401, 'Unauthorized', 'Refresh token was revoked.', 'urn:telecom:error:token-revoked');
   }
 };
 
+/**
+ * Authentication service: login, refresh, logout, and access token verification.
+ * All methods that touch the user repository are async.
+ */
 export const authService = {
-  login(email: string, password: string, correlationId: string): LoginResponse {
-    const user = userRepository.findByEmail(email);
+  /**
+   * Authenticates user by email/password and returns access + refresh tokens and user info.
+   * Throws on invalid credentials or blocked user.
+   */
+  async login(email: string, password: string, correlationId: string): Promise<LoginResponse> {
+    const user = await userRepository.findByEmail(email);
     if (!user) {
       throw new ApiError(
         401,
@@ -55,7 +65,7 @@ export const authService = {
       throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
     }
 
-    const permissions = userRepository.getPermissionKeysForRoles(user.roles);
+    const permissions = await userRepository.getPermissionKeysForRoles(user.roles);
     const accessJti = uuidv4();
     const refreshJti = uuidv4();
 
@@ -93,7 +103,7 @@ export const authService = {
       },
     );
 
-    auditService.record({
+    await auditService.record({
       actorUserId: user.id,
       action: AUDIT_ACTIONS.USER_LOGIN,
       entityType: 'user',
@@ -119,6 +129,10 @@ export const authService = {
     };
   },
 
+  /**
+   * Verifies an access token and returns decoded claims.
+   * Throws on invalid or malformed token.
+   */
   verifyAccessToken(token: string): AccessTokenClaims {
     let decoded: jwt.JwtPayload | string;
 
@@ -146,7 +160,11 @@ export const authService = {
     return decoded as AccessTokenClaims;
   },
 
-  refresh(refreshToken: string): LoginResponse {
+  /**
+   * Rotates refresh token: validates current refresh token, revokes it, issues new access + refresh tokens.
+   * Throws if token is invalid or user is blocked.
+   */
+  async refresh(refreshToken: string): Promise<LoginResponse> {
     let decoded: jwt.JwtPayload | string;
 
     try {
@@ -168,21 +186,21 @@ export const authService = {
       throw new ApiError(401, 'Unauthorized', 'Invalid refresh token.', 'urn:telecom:error:invalid-token');
     }
 
-    validateRefreshTokenNotRevoked(payload.jti as string);
-    const user = getUserOrThrow(userId);
+    await validateRefreshTokenNotRevoked(payload.jti as string);
+    const user = await getUserOrThrow(userId);
 
     if (user.blocked) {
       throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
     }
 
-    userRepository.revokeRefreshToken({
+    await userRepository.revokeRefreshToken({
       jti: payload.jti as string,
       userId,
       exp: payload.exp ?? unixNow(),
       revokedAt: new Date().toISOString(),
     });
 
-    const permissions = userRepository.getPermissionKeysForRoles(user.roles);
+    const permissions = await userRepository.getPermissionKeysForRoles(user.roles);
     const newAccessJti = uuidv4();
     const newRefreshJti = uuidv4();
 
@@ -236,7 +254,10 @@ export const authService = {
     };
   },
 
-  logout(refreshToken: string, actorUserId: string | null, correlationId: string): void {
+  /**
+   * Logs out by revoking the given refresh token and recording an audit event.
+   */
+  async logout(refreshToken: string, actorUserId: string | null, correlationId: string): Promise<void> {
     let decoded: jwt.JwtPayload | string;
 
     try {
@@ -257,14 +278,14 @@ export const authService = {
       throw new ApiError(401, 'Unauthorized', 'Invalid refresh token.', 'urn:telecom:error:invalid-token');
     }
 
-    userRepository.revokeRefreshToken({
+    await userRepository.revokeRefreshToken({
       jti: decoded.jti,
       userId,
       exp: decoded.exp ?? unixNow(),
       revokedAt: new Date().toISOString(),
     });
 
-    auditService.record({
+    await auditService.record({
       actorUserId: actorUserId ?? userId,
       action: AUDIT_ACTIONS.USER_LOGOUT,
       entityType: 'user',
