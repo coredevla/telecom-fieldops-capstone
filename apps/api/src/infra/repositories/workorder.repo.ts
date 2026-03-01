@@ -1,15 +1,11 @@
 import { randomUUID } from 'crypto';
 import { prisma } from '../db/prisma/prismaClient';
-import type {
-  WorkOrder,
-  WorkOrderItem,
-  WorkOrderType,
-  WorkOrderStatus,
-} from '../../domain/models/types';
+import type { WorkOrder, WorkOrderItem, WorkOrderStatus, WorkOrderType } from '../../domain/models/types';
 
 export interface CreateWorkOrderInput {
   type: WorkOrderType;
   customerId: string;
+  createdByUserId?: string;
   branchId?: string;
   planId?: string;
   items?: WorkOrderItem[];
@@ -18,6 +14,8 @@ export interface CreateWorkOrderInput {
 export interface UpdateWorkOrderInput {
   status?: WorkOrderStatus;
   version?: number;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
   branchId?: string;
   planId?: string;
   assignedTechUserId?: string;
@@ -67,11 +65,9 @@ export const workOrderRepository = {
   },
 
   async create(input: CreateWorkOrderInput): Promise<WorkOrder> {
-    const id = `wo_${randomUUID().slice(0, 8)}`;
-    const items = input.items ? [...input.items] : [];
     const created = await prisma.workOrder.create({
       data: {
-        id,
+        id: `wo_${randomUUID().slice(0, 8)}`,
         type: input.type,
         status: 'DRAFT',
         customerId: input.customerId,
@@ -79,15 +75,18 @@ export const workOrderRepository = {
         planId: input.planId ?? null,
         assignedTechUserId: null,
         version: 0,
-        items: items as object,
+        items: (input.items ?? []) as object,
       },
     });
+
     return toDomainWorkOrder(created);
   },
 
   async update(id: string, input: UpdateWorkOrderInput): Promise<WorkOrder | null> {
     const existing = await prisma.workOrder.findUnique({ where: { id } });
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
 
     const data: {
       status?: string;
@@ -97,6 +96,7 @@ export const workOrderRepository = {
       assignedTechUserId?: string | null;
       items?: object;
     } = {};
+
     if (input.status !== undefined) data.status = input.status;
     if (input.version !== undefined) data.version = input.version;
     if (input.branchId !== undefined) data.branchId = input.branchId ?? null;

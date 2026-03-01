@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../layouts/Layout";
 import PageNavigation from "../components/PageNavigation";
+import { apiClient } from "../services/apiClient";
 
 type Kpi = {
   label: string;
@@ -44,16 +45,91 @@ const TICKETS_BY_TYPE: TicketByType[] = [
 const PERIOD_OPTIONS = ["Hoy", "Ultimos 7 dias", "Ultimos 30 dias"];
 const BRANCH_OPTIONS = ["Todas las sucursales", "Santo Domingo Centro", "Santiago", "La Romana", "San Cristobal"];
 
+type DashboardCard = {
+  id: string;
+  label: string;
+  value: number;
+  unit?: string;
+};
+
+type DashboardKpiResponse = {
+  generatedAt: string;
+  timezone: string;
+  cards: DashboardCard[];
+  kpis: Record<string, unknown>;
+};
+
+const DEFAULT_KPI_DATA: Kpi[] = KPI_DATA;
+const DEFAULT_BRANCH_PERFORMANCE: BranchPerformance[] = BRANCH_PERFORMANCE;
+const DEFAULT_TICKETS_BY_TYPE: TicketByType[] = TICKETS_BY_TYPE;
+
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState(PERIOD_OPTIONS[1]);
   const [selectedBranch, setSelectedBranch] = useState(BRANCH_OPTIONS[0]);
   const [openMenu, setOpenMenu] = useState<"period" | "branch" | null>(null);
   const [openModal, setOpenModal] = useState<"summary" | "alerts" | null>(null);
+  const [kpiData, setKpiData] = useState<Kpi[]>(DEFAULT_KPI_DATA);
+  const [branchPerformance, setBranchPerformance] = useState<BranchPerformance[]>(DEFAULT_BRANCH_PERFORMANCE);
+  const [ticketsByType, setTicketsByType] = useState<TicketByType[]>(DEFAULT_TICKETS_BY_TYPE);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const response = await apiClient.get<DashboardKpiResponse>("/api/v1/dashboard/kpis");
+        const cards = response.cards ?? [];
+        const kpis = response.kpis ?? {};
+
+        const normalizedKpis: Kpi[] = cards.slice(0, 4).map((card) => {
+          const value = card.unit === "percent" ? `${card.value}%` : card.unit === "hours" ? `${card.value} h` : String(card.value);
+          return {
+            label: card.label,
+            value,
+            detail: `Actualizado ${new Date(response.generatedAt).toLocaleTimeString()} (${response.timezone})`,
+          };
+        });
+
+        const criticalByBranchRaw = (kpis["kpi06CriticalInventoryByBranch"] as { byBranch?: Array<{ branchName?: string; criticalItems?: number }> })?.byBranch ?? [];
+        const normalizedBranches: BranchPerformance[] = criticalByBranchRaw.slice(0, 5).map((entry) => {
+          const criticalItems = Number(entry.criticalItems ?? 0);
+          return {
+            branch: entry.branchName ?? "Sucursal",
+            completionRate: Math.max(0, Math.min(100, 100 - criticalItems * 10)),
+            openOrders: criticalItems,
+          };
+        });
+
+        const createdTodayByTypeRaw = (kpis["kpi01CreatedTodayByType"] as { byType?: Record<string, number> })?.byType ?? {};
+        const normalizedTickets: TicketByType[] = Object.entries(createdTodayByTypeRaw)
+          .map(([type, count]) => ({
+            type: type.split("_").join(" "),
+            count: Number(count),
+          }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        if (normalizedKpis.length > 0) {
+          setKpiData(normalizedKpis);
+        }
+        if (normalizedBranches.length > 0) {
+          setBranchPerformance(normalizedBranches);
+        }
+        if (normalizedTickets.length > 0) {
+          setTicketsByType(normalizedTickets);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo cargar dashboard desde API.";
+        setLoadError(message);
+      }
+    };
+
+    void loadDashboard();
+  }, []);
 
   const maxTypeCount = useMemo(
-    () => Math.max(...TICKETS_BY_TYPE.map((item) => item.count), 1),
-    []
+    () => Math.max(...ticketsByType.map((item) => item.count), 1),
+    [ticketsByType]
   );
 
   return (
@@ -154,7 +230,7 @@ export default function AdminDashboardPage() {
           </header>
 
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            {KPI_DATA.map((kpi) => (
+            {kpiData.map((kpi) => (
               <article key={kpi.label} className="bg-white border border-gray-200 rounded-sm p-6">
                 <p className="text-sm text-gray-600">{kpi.label}</p>
                 <p className="text-2xl font-semibold text-gray-800 mt-2">{kpi.value}</p>
@@ -162,6 +238,14 @@ export default function AdminDashboardPage() {
               </article>
             ))}
           </section>
+
+          {loadError ? (
+            <section className="bg-white border border-gray-200 rounded-sm p-4 mb-6">
+              <p className="text-sm text-gray-700">
+                No se pudieron cargar KPIs en vivo. Mostrando valores de referencia. Detalle: {loadError}
+              </p>
+            </section>
+          ) : null}
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <article className="bg-white border border-gray-200 rounded-sm p-6">
@@ -181,7 +265,7 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
               <div className="space-y-4">
-                {BRANCH_PERFORMANCE.map((item) => (
+                {branchPerformance.map((item) => (
                   <div key={item.branch}>
                     <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
                       <span>{item.branch}</span>
@@ -218,7 +302,7 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
               <div className="space-y-4">
-                {TICKETS_BY_TYPE.map((item) => {
+                {ticketsByType.map((item) => {
                   const ratio = Math.round((item.count / maxTypeCount) * 100);
                   return (
                     <div key={item.type}>
