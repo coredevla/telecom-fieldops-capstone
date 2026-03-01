@@ -15,6 +15,7 @@ import { requirePermissions } from '../../middleware/rbac';
 export function buildApiRouter() {
   const router = Router();
 
+  router.use('/audit', auditRouter());
   router.use(healthRouter());
   router.use('/catalog', plansRouter);
   router.use('/catalog', productsRouter);
