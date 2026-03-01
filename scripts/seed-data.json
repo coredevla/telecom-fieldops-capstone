@@ -82,7 +82,7 @@
   "revokedRefreshTokens": [],
   "workOrders": [
     {
-      "id": "wo_seed_01",
+      "id": "wo_01",
       "type": "NEW_SERVICE_INSTALL",
       "status": "DRAFT",
       "customerId": "cust_001",
@@ -98,7 +98,7 @@
       "updatedAt": "2025-02-28T10:00:00.000Z"
     },
     {
-      "id": "wo_seed_02",
+      "id": "wo_02",
       "type": "PLAN_AND_EQUIPMENT_SALE",
       "status": "SUBMITTED",
       "customerId": "cust_002",
@@ -110,7 +110,7 @@
       "updatedAt": "2025-02-28T11:30:00.000Z"
     },
     {
-      "id": "wo_seed_03",
+      "id": "wo_03",
       "type": "CLAIM_TROUBLESHOOT",
       "status": "SCHEDULED",
       "customerId": "cust_003",
