@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { productsService } from '../domain/services/products.service';
 import { validateBody, validateParams } from '../middleware/validate';
@@ -38,27 +38,52 @@ const updateProductSchema = z
     message: 'At least one field must be provided.',
   });
 
-router.get('/products', (_req: Request, res: Response) => {
-  res.json(productsService.listProducts());
+/** GET /products: list all products. */
+router.get('/products', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await productsService.listProducts());
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.get('/products/:id', validateParams(productIdParamsSchema), (req: Request, res: Response) => {
-  res.json(productsService.getProductById(req.params.id));
+/** GET /products/:id: get product by id. */
+router.get('/products/:id', validateParams(productIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await productsService.getProductById(req.params.id));
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.post('/products', validateBody(createProductSchema), (req: Request, res: Response) => {
-  const created = productsService.createProduct(req.body);
-  res.status(201).json(created);
+/** POST /products: create product. */
+router.post('/products', validateBody(createProductSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const created = await productsService.createProduct(req.body);
+    res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.patch('/products/:id', validateParams(productIdParamsSchema), validateBody(updateProductSchema), (req: Request, res: Response) => {
-  const updated = productsService.updateProduct(req.params.id, req.body);
-  res.json(updated);
+/** PATCH /products/:id: update product. */
+router.patch('/products/:id', validateParams(productIdParamsSchema), validateBody(updateProductSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const updated = await productsService.updateProduct(req.params.id, req.body);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.delete('/products/:id', validateParams(productIdParamsSchema), (req: Request, res: Response) => {
-  productsService.deleteProduct(req.params.id);
-  res.status(204).send();
+/** DELETE /products/:id: delete product. */
+router.delete('/products/:id', validateParams(productIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await productsService.deleteProduct(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;
