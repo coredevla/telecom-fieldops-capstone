@@ -67,3 +67,15 @@ En `infra/routes/index.ts` se montan los routers, por ejemplo: `router.use(healt
 1. **Backend (apps/api)**: Mínimo 1 test por RF (RNF-TEST-01): tests de integración que llamen a los endpoints y comprueben códigos y cuerpos (login 200/401, users, roles, block, RBAC 403).
 2. Ejecutar tests en CI (ej. GitHub Actions) si está configurado.
 3. Los criterios detallados por RF están en las secciones siguientes.
+---
+
+## RF-13 Dashboard KPIs (referencia rapida)
+
+- Endpoint: `GET /api/v1/dashboard/kpis`
+- Alias: `GET /api/v1/kpis/summary`
+- Router: `apps/api/src/routes/kpi.routes.ts`
+- Servicio: `apps/api/src/domain/services/kpi.service.ts`
+- Montaje: `apps/api/src/infra/routes/index.ts`
+- Contrato: `apps/api/src/openapi/openapi.yaml`
+- Documentacion funcional: `docs/10-kpi.md`
+- Test de integracion: `apps/api/tests/kpi-dashboard.test.ts`

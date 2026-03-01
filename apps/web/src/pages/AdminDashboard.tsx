@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../layouts/Layout";
 import PageNavigation from "../components/PageNavigation";
+import { apiClient } from "../services/apiClient";
+import { ApiError } from "../types/plans";
 
 type Kpi = {
   label: string;
@@ -44,16 +46,123 @@ const TICKETS_BY_TYPE: TicketByType[] = [
 const PERIOD_OPTIONS = ["Hoy", "Ultimos 7 dias", "Ultimos 30 dias"];
 const BRANCH_OPTIONS = ["Todas las sucursales", "Santo Domingo Centro", "Santiago", "La Romana", "San Cristobal"];
 
+type DashboardTab = "resumen" | "rendimiento" | "tickets" | "alertas";
+
+const TABS: { id: DashboardTab; label: string }[] = [
+  { id: "resumen", label: "Resumen" },
+  { id: "rendimiento", label: "Rendimiento por sucursal" },
+  { id: "tickets", label: "Tickets" },
+  { id: "alertas", label: "Alertas" },
+];
+
+type DashboardCard = {
+  id: string;
+  label: string;
+  value: number;
+  unit?: string;
+};
+
+type DashboardKpiResponse = {
+  generatedAt: string;
+  timezone: string;
+  cards: DashboardCard[];
+  kpis: Record<string, unknown>;
+};
+
+const DEFAULT_KPI_DATA: Kpi[] = KPI_DATA;
+const DEFAULT_BRANCH_PERFORMANCE: BranchPerformance[] = BRANCH_PERFORMANCE;
+const DEFAULT_TICKETS_BY_TYPE: TicketByType[] = TICKETS_BY_TYPE;
+
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState(PERIOD_OPTIONS[1]);
   const [selectedBranch, setSelectedBranch] = useState(BRANCH_OPTIONS[0]);
   const [openMenu, setOpenMenu] = useState<"period" | "branch" | null>(null);
   const [openModal, setOpenModal] = useState<"summary" | "alerts" | null>(null);
+  const [kpiData, setKpiData] = useState<Kpi[]>(DEFAULT_KPI_DATA);
+  const [branchPerformance, setBranchPerformance] = useState<BranchPerformance[]>(DEFAULT_BRANCH_PERFORMANCE);
+  const [ticketsByType, setTicketsByType] = useState<TicketByType[]>(DEFAULT_TICKETS_BY_TYPE);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DashboardTab>("resumen");
+
+  const loadDashboard = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const response = await apiClient.get<DashboardKpiResponse>("/api/v1/dashboard/kpis");
+      const cards = response.cards ?? [];
+      const kpis = response.kpis ?? {};
+
+      const normalizedKpis: Kpi[] = cards.slice(0, 4).map((card) => {
+        const value = card.unit === "percent" ? `${card.value}%` : card.unit === "hours" ? `${card.value} h` : String(card.value);
+        return {
+          label: card.label,
+          value,
+          detail: `Actualizado ${new Date(response.generatedAt).toLocaleTimeString()} (${response.timezone})`,
+        };
+      });
+
+      const criticalByBranchRaw = (kpis["kpi06CriticalInventoryByBranch"] as { byBranch?: Array<{ branchName?: string; criticalItems?: number }> })?.byBranch ?? [];
+      const normalizedBranches: BranchPerformance[] = criticalByBranchRaw.slice(0, 5).map((entry) => {
+        const criticalItems = Number(entry.criticalItems ?? 0);
+        return {
+          branch: entry.branchName ?? "Sucursal",
+          completionRate: Math.max(0, Math.min(100, 100 - criticalItems * 10)),
+          openOrders: criticalItems,
+        };
+      });
+
+      const createdTodayByTypeRaw = (kpis["kpi01CreatedTodayByType"] as { byType?: Record<string, number> })?.byType ?? {};
+      const normalizedTickets: TicketByType[] = Object.entries(createdTodayByTypeRaw)
+        .map(([type, count]) => ({
+          type: type.split("_").join(" "),
+          count: Number(count),
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      if (normalizedKpis.length > 0) {
+        setKpiData(normalizedKpis);
+      }
+      if (normalizedBranches.length > 0) {
+        setBranchPerformance(normalizedBranches);
+      }
+      if (normalizedTickets.length > 0) {
+        setTicketsByType(normalizedTickets);
+      }
+    } catch (error) {
+      let message: string;
+      if (error instanceof ApiError) {
+        if (error.status === 404) {
+          message =
+            "El endpoint de KPIs no existe (404). Comprueba que la API en Railway esté desplegada con la última versión (rutas /api/v1/dashboard/kpis) y que la variable VITE_API_URL del frontend apunte a la URL de la API.";
+        } else if (error.status === 401) {
+          message = "Sesión expirada o no autorizado. Inicia sesión de nuevo.";
+        } else {
+          message = error.message;
+        }
+      } else {
+        message = error instanceof Error ? error.message : "No se pudo cargar dashboard desde API.";
+      }
+      setLoadError(message);
+      // No mostrar valores inventados cuando falla la API
+      setKpiData([
+        { label: "Ordenes activas", value: "—", detail: "Datos no disponibles" },
+        { label: "SLA cumplido", value: "—", detail: "Datos no disponibles" },
+        { label: "Tiempo medio", value: "—", detail: "Datos no disponibles" },
+        { label: "Reservas pendientes", value: "—", detail: "Datos no disponibles" },
+      ]);
+      setBranchPerformance([]);
+      setTicketsByType([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const maxTypeCount = useMemo(
-    () => Math.max(...TICKETS_BY_TYPE.map((item) => item.count), 1),
-    []
+    () => Math.max(...ticketsByType.map((item) => item.count), 1),
+    [ticketsByType]
   );
 
   return (
@@ -61,20 +170,30 @@ export default function AdminDashboardPage() {
       <div className="min-h-screen bg-gray-100 py-10">
         <div className="max-w-6xl mx-auto px-6 text-gray-800">
           <PageNavigation />
-          <nav className="bg-white border border-gray-200 rounded-sm mb-6">
+          <nav className="bg-white border border-gray-200 rounded-sm mb-6" role="tablist">
             <ul className="px-6 flex gap-10 text-sm text-gray-700">
-              <li className="py-4 border-b-2 border-[#002D72] text-[#002D72] font-medium cursor-pointer">
-                Resumen
-              </li>
-              <li className="py-4 hover:text-[#002D72] cursor-pointer">
-                Rendimiento por sucursal
-              </li>
-              <li className="py-4 hover:text-[#002D72] cursor-pointer">
-                Tickets
-              </li>
-              <li className="py-4 hover:text-[#002D72] cursor-pointer">
-                Alertas
-              </li>
+              {TABS.map((tab) => (
+                <li key={tab.id}>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      if (tab.id === "alertas") {
+                        setOpenModal("alerts");
+                      }
+                    }}
+                    className={`py-4 border-b-2 font-medium cursor-pointer transition-colors ${
+                      activeTab === tab.id
+                        ? "border-[#002D72] text-[#002D72]"
+                        : "border-transparent hover:text-[#002D72] hover:border-gray-300"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                </li>
+              ))}
             </ul>
           </nav>
           <header className="bg-white border border-gray-200 rounded-sm p-6 mb-6">
@@ -154,7 +273,7 @@ export default function AdminDashboardPage() {
           </header>
 
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            {KPI_DATA.map((kpi) => (
+            {kpiData.map((kpi) => (
               <article key={kpi.label} className="bg-white border border-gray-200 rounded-sm p-6">
                 <p className="text-sm text-gray-600">{kpi.label}</p>
                 <p className="text-2xl font-semibold text-gray-800 mt-2">{kpi.value}</p>
@@ -163,13 +282,23 @@ export default function AdminDashboardPage() {
             ))}
           </section>
 
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {loadError ? (
+            <section className="bg-amber-50 border border-amber-200 rounded-sm p-4 mb-6">
+              <p className="text-sm text-gray-800 mb-1">
+                No se pudieron cargar KPIs en vivo. Los valores mostrados son de referencia.
+              </p>
+              <p className="text-sm text-gray-600">{loadError}</p>
+            </section>
+          ) : null}
+
+          <section className={`grid gap-6 mb-6 ${activeTab === "resumen" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+            {(activeTab === "resumen" || activeTab === "rendimiento") && (
             <article className="bg-white border border-gray-200 rounded-sm p-6">
               <div className="flex items-start justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-2xl font-semibold text-gray-800">Cumplimiento por sucursal</h2>
                   <p className="text-sm text-gray-600">
-                    Porcentaje de ordenes completadas y carga pendiente.
+                    Porcentaje de ordenes completadas y carga pendiente (datos desde API).
                   </p>
                 </div>
                 <button
@@ -181,32 +310,40 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
               <div className="space-y-4">
-                {BRANCH_PERFORMANCE.map((item) => (
-                  <div key={item.branch}>
-                    <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
-                      <span>{item.branch}</span>
-                      <span>{item.completionRate}%</span>
+                {branchPerformance.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No hay datos. Configure VITE_API_URL en el frontend y despliegue la API en Railway con la ruta GET /api/v1/dashboard/kpis para ver inventario crítico por sucursal.
+                  </p>
+                ) : (
+                  branchPerformance.map((item) => (
+                    <div key={item.branch}>
+                      <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
+                        <span>{item.branch}</span>
+                        <span>{item.completionRate}%</span>
+                      </div>
+                      <div className="w-full h-3 border border-gray-200 bg-gray-100">
+                        <div
+                          className="h-full bg-[#002D72]"
+                          style={{ width: `${item.completionRate}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Ordenes abiertas: {item.openOrders}
+                      </p>
                     </div>
-                    <div className="w-full h-3 border border-gray-200 bg-gray-100">
-                      <div
-                        className="h-full bg-[#002D72]"
-                        style={{ width: `${item.completionRate}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Ordenes abiertas: {item.openOrders}
-                    </p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </article>
+            )}
 
+            {(activeTab === "resumen" || activeTab === "tickets") && (
             <article className="bg-white border border-gray-200 rounded-sm p-6">
               <div className="flex items-start justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-2xl font-semibold text-gray-800">Tickets por tipo</h2>
                   <p className="text-sm text-gray-600">
-                    Distribucion de solicitudes registradas en el periodo seleccionado.
+                    Distribucion de solicitudes registradas en el periodo seleccionado (datos desde API).
                   </p>
                 </div>
                 <button
@@ -218,24 +355,32 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
               <div className="space-y-4">
-                {TICKETS_BY_TYPE.map((item) => {
-                  const ratio = Math.round((item.count / maxTypeCount) * 100);
-                  return (
-                    <div key={item.type}>
-                      <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
-                        <span>{item.type}</span>
-                        <span>{item.count}</span>
+                {ticketsByType.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No hay datos. Configure VITE_API_URL y despliegue la API con GET /api/v1/dashboard/kpis para ver solicitudes por tipo.
+                  </p>
+                ) : (
+                  ticketsByType.map((item) => {
+                    const ratio = Math.round((item.count / maxTypeCount) * 100);
+                    return (
+                      <div key={item.type}>
+                        <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
+                          <span>{item.type}</span>
+                          <span>{item.count}</span>
+                        </div>
+                        <div className="w-full h-3 border border-gray-200 bg-gray-100">
+                          <div className="h-full bg-[#002D72]" style={{ width: `${ratio}%` }} />
+                        </div>
                       </div>
-                      <div className="w-full h-3 border border-gray-200 bg-gray-100">
-                        <div className="h-full bg-[#002D72]" style={{ width: `${ratio}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </article>
+            )}
           </section>
 
+          {activeTab === "resumen" && (
           <section className="bg-white border border-gray-200 rounded-sm p-6 mb-6">
             <h2 className="text-2xl font-semibold text-gray-800">Actividad reciente</h2>
             <p className="text-sm text-gray-600 mb-6">
@@ -274,6 +419,7 @@ export default function AdminDashboardPage() {
               </table>
             </div>
           </section>
+          )}
         </div>
 
         {openModal === "summary" && (

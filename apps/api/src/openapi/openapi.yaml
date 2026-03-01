@@ -15,6 +15,7 @@ tags:
   - name: Catalog
   - name: Inventory
   - name: WorkOrders
+  - name: KPIs
 
 components:
   securitySchemes:
@@ -1191,9 +1192,44 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
 
+  /dashboard/kpis:
+    get:
+      tags: [KPIs]
+      summary: Dashboard KPIs summary (RF-13)
+      responses:
+        "200":
+          description: dashboard kpi payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [generatedAt, timezone, kpis, cards]
+                properties:
+                  generatedAt: { type: string, format: date-time }
+                  timezone: { type: string }
+                  source:
+                    type: object
+                    additionalProperties: { type: string }
+                  kpis:
+                    type: object
+                    additionalProperties: true
+                  cards:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label, value]
+                      properties:
+                        id: { type: string }
+                        label: { type: string }
+                        value: { type: number }
+                        unit: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /kpis/summary:
     get:
       tags: [KPIs]
+      summary: Legacy alias for dashboard KPI summary
       responses:
         "200":
           description: kpi summary
