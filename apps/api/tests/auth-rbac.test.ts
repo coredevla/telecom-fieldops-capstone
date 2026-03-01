@@ -35,6 +35,8 @@ describe('Auth and RBAC integration', () => {
 
   it('RF-03 returns 403 when user lacks permission', async () => {
     const ventasLogin = await login('ventas@telecom.local', 'Ventas123!');
+    expect(ventasLogin.status).toBe(200);
+    expect(ventasLogin.body.accessToken).toBeDefined();
 
     const response = await request(app)
       .get('/api/v1/users')
@@ -45,6 +47,18 @@ describe('Auth and RBAC integration', () => {
       title: 'Forbidden',
       status: 403,
     });
+  });
+
+  it('GET /audit returns 403 when user lacks audit:read', async () => {
+    const ventasLogin = await login('ventas@telecom.local', 'Ventas123!');
+    expect(ventasLogin.status).toBe(200);
+    expect(ventasLogin.body.accessToken).toBeDefined();
+
+    const response = await request(app)
+      .get('/api/v1/audit')
+      .set('Authorization', `Bearer ${ventasLogin.body.accessToken}`);
+
+    expect(response.status).toBe(403);
   });
 
   it('POST /users/:id/block with wrong id (user-ventas-01) returns 404', async () => {
@@ -61,6 +75,8 @@ describe('Auth and RBAC integration', () => {
 
   it('RF-02 blocked user receives 403 on protected endpoint with old token', async () => {
     const ventasLogin = await login('ventas@telecom.local', 'Ventas123!');
+    expect(ventasLogin.status).toBe(200);
+    expect(ventasLogin.body.accessToken).toBeDefined();
     const adminLogin = await login('admin@telecom.local', 'Admin123!');
 
     const blockResponse = await request(app)
@@ -103,15 +119,5 @@ describe('Auth and RBAC integration', () => {
       limit: expect.any(Number),
       offset: expect.any(Number),
     });
-  });
-
-  it('GET /audit returns 403 when user lacks audit:read', async () => {
-    const ventasLogin = await login('ventas@telecom.local', 'Ventas123!');
-
-    const response = await request(app)
-      .get('/api/v1/audit')
-      .set('Authorization', `Bearer ${ventasLogin.body.accessToken}`);
-
-    expect(response.status).toBe(403);
   });
 });
