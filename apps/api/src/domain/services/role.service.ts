@@ -1,10 +1,11 @@
-import { roleRepo } from "../../infra/repositories/role.repo";
+import { roleRepo } from '../../infra/repositories/role.repo';
 
+/** Role service: list roles and get permission keys by role ids. All methods async. */
 export const roleService = {
-  listRoles() {
+  async listRoles() {
     return roleRepo.listAll();
   },
-  getPermissionKeysForUser(roleIds: string[]): string[] {
+  async getPermissionKeysForUser(roleIds: string[]): Promise<string[]> {
     return roleRepo.getPermissionKeysByRoleIds(roleIds);
   },
 };

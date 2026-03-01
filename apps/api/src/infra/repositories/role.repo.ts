@@ -1,53 +1,44 @@
-import fs from 'fs';
-import path from 'path';
+import { prisma } from '../db/prisma/prismaClient';
 import type { Role } from '../../domain/models/types';
 
-type SeedRoles = { roles?: Role[] };
-
-function loadRolesFromSeed(): Role[] {
-  const candidates = [
-    process.env.SEED_DATA_PATH,
-    path.resolve(__dirname, '../../../../../../scripts/seed-data.json'), // monorepo: dist/infra/repositories -> repo root
-    path.resolve(__dirname, '../../../../../scripts/seed-data.json'),    // src/infra/repositories (Jest)
-    path.resolve(__dirname, '../../../scripts/seed-data.json'),          // container: /app/dist/infra/repositories
-    path.resolve(process.cwd(), '../../scripts/seed-data.json'),         // from apps/api -> repo root
-  ].filter(Boolean) as string[];
-
-  for (const seedPath of candidates) {
-    try {
-      if (fs.existsSync(seedPath)) {
-        const raw = fs.readFileSync(seedPath, 'utf-8');
-        const data = JSON.parse(raw) as SeedRoles;
-        if (Array.isArray(data.roles) && data.roles.length > 0) {
-          return data.roles;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-  return [];
+/** Maps a Prisma Role row to the domain Role type (permissionKeys JSON -> string[]). */
+function toDomainRole(row: { id: string; name: string; permissionKeys: unknown }): Role {
+  const keys = Array.isArray(row.permissionKeys) ? row.permissionKeys : [];
+  return { id: row.id, name: row.name, permissionKeys: keys as string[] };
 }
 
-const ROLES: Role[] = loadRolesFromSeed();
-
+/**
+ * Roles repository backed by Prisma (PostgreSQL).
+ * All methods are async. For role-by-name and permissions by role names use userRepository.
+ */
 export function roleRepository() {
   return {
-    listAll(): Role[] {
-      return [...ROLES];
+    /** Returns all roles. */
+    async listAll(): Promise<Role[]> {
+      const rows = await prisma.role.findMany();
+      return rows.map(toDomainRole);
     },
-    findById(id: string): Role | undefined {
-      return ROLES.find((r) => r.id === id);
+
+    /** Finds a role by id; returns undefined if not found. */
+    async findById(id: string): Promise<Role | undefined> {
+      const row = await prisma.role.findUnique({ where: { id } });
+      return row ? toDomainRole(row) : undefined;
     },
-    getPermissionKeysByRoleIds(roleIds: string[]): string[] {
+
+    /** Aggregates permission keys for the given role ids (no duplicates). */
+    async getPermissionKeysByRoleIds(roleIds: string[]): Promise<string[]> {
       const set = new Set<string>();
       for (const roleId of roleIds) {
-        const role = ROLES.find((r) => r.id === roleId);
-        if (role) role.permissionKeys.forEach((k) => set.add(k));
+        const row = await prisma.role.findUnique({ where: { id: roleId } });
+        if (row) {
+          const keys = Array.isArray(row.permissionKeys) ? row.permissionKeys : [];
+          keys.forEach((k) => set.add(k as string));
+        }
       }
       return Array.from(set);
     },
   };
 }
 
+/** Singleton instance for backward compatibility. */
 export const roleRepo = roleRepository();
