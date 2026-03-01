@@ -1,85 +1,96 @@
-const API_BASE_URL = 'http://localhost:3000/api/v1';
+/**
+ * apiClient.ts
+ * Cliente HTTP base del proyecto.
+ * Adjunta el token Bearer automáticamente y lanza ApiError en respuestas no-ok.
+ * RNF-OBS-01: Incluye correlationId en cada request.
+ */
 
-export type Branch = {
-  id: string;
-  name: string;
-  isMain: boolean;
-};
+import { ApiError, ProblemDetails } from '../types/plans';
+import { API_BASE_URL } from '../config/env';
 
-export type Product = {
-  id: string;
-  name: string;
-  category: string;
-  isSerialized: boolean;
-};
+const BASE_URL = API_BASE_URL;
 
-export type InventoryRow = {
-  id: string;
-  branchId: string;
-  productId: string;
-  productName: string;
-  qtyAvailable: number;
-  qtyReserved: number;
-  updatedAt: string;
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export type ReservationItem = {
-  productId: string;
-  qty: number;
-};
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  const correlationId = crypto.randomUUID();
 
-export type ReservationResponse = {
-  workOrderId: string;
-  branchId: string;
-  items: ReservationItem[];
-  reservedAt: string;
-};
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
-  });
-
-  if (!response.ok) {
-    let message = `Request failed (${response.status})`;
-    try {
-      const data = (await response.json()) as { message?: string };
-      if (data.message) {
-        message = data.message;
-      }
-    } catch {
-      // No-op when response has no JSON body.
-    }
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
+  return {
+    'Content-Type': 'application/json',
+    'X-Correlation-Id': correlationId,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
-export const apiClient = {
-  getBranches(): Promise<Branch[]> {
-    return request<Branch[]>('/inventory/branches');
-  },
-  getProducts(): Promise<Product[]> {
-    return request<Product[]>('/inventory/products');
-  },
-  getInventory(branchId: string): Promise<InventoryRow[]> {
-    return request<InventoryRow[]>(`/inventory?branchId=${encodeURIComponent(branchId)}`);
-  },
-  reserveInventory(input: {
-    workOrderId: string;
-    branchId: string;
-    items: ReservationItem[];
-  }): Promise<ReservationResponse> {
-    return request<ReservationResponse>('/inventory/reservations', {
-      method: 'POST',
-      body: JSON.stringify(input)
-    });
-  },
-  releaseReservation(workOrderId: string): Promise<ReservationResponse> {
-    return request<ReservationResponse>(`/inventory/reservations/${encodeURIComponent(workOrderId)}`, {
-      method: 'DELETE'
-    });
+async function handleResponse<T>(res: Response, requestUrl: string): Promise<T> {
+  if (res.ok) return res.json() as Promise<T>;
+
+  const body: ProblemDetails = await res.json().catch(() => ({
+    type:          'about:blank',
+    title:         'Error inesperado',
+    status:        res.status,
+    detail:        'No se pudo procesar la respuesta del servidor.',
+    instance:      res.url,
+    correlationId: '',
+  }));
+
+  // 401 con token en localStorage: sesión expirada o inválida; limpiar y redirigir a login
+  if (res.status === 401 && typeof window !== 'undefined' && localStorage.getItem('access_token')) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+    if (!requestUrl.includes('/auth/login')) {
+      window.location.href = '/?session=expired';
+    }
   }
+
+  throw new ApiError(body.detail || body.title, res.status, body);
+}
+
+// ─── Métodos públicos ─────────────────────────────────────────────────────────
+
+export const apiClient = {
+  async get<T>(path: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method:  'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<T>(res, path);
+  },
+
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method:  'PATCH',
+      headers: getAuthHeaders(),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return handleResponse<T>(res, path);
+  },
+
+  async post<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method:  'POST',
+      headers: getAuthHeaders(),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return handleResponse<T>(res, path);
+  },
+
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method:  'PUT',
+      headers: getAuthHeaders(),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return handleResponse<T>(res, path);
+  },
+
+  async delete<T>(path: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method:  'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<T>(res, path);
+  },
 };

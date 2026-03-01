@@ -22,5 +22,5 @@ export interface InventoryItem {
 export interface SeedData {
   products: Product[];
   inventory: InventoryItem[];
-  plans: any[]; // Necesario para la ruta /catalog/plans
+  plans: any[];
 }

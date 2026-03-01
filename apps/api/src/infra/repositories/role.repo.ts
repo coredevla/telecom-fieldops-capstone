@@ -1,27 +1,44 @@
+import { prisma } from '../db/prisma/prismaClient';
 import type { Role } from '../../domain/models/types';
 
-const ROLES: Role[] = [
-    { id: "role_admin", name: "Administrator", permissionKeys: ["roles:read", "roles:write", "users:read", "users:write", "users:block"] },
-    { id: "role_sales", name: "Sales", permissionKeys: ["roles:read", "users:read"] },
-];
-
-export function roleRepository(){
-    return {
-        listAll(): Role[] {
-          return [...ROLES];
-        },
-        findById(id: string): Role | undefined {
-          return ROLES.find((r) => r.id === id);
-        },
-        getPermissionKeysByRoleIds(roleIds: string[]): string[] {
-          const set = new Set<string>();
-          for (const roleId of roleIds) {
-            const role = ROLES.find((r) => r.id === roleId);
-            if (role) role.permissionKeys.forEach((k) => set.add(k));
-          }
-          return Array.from(set);
-        },
-    };
+/** Maps a Prisma Role row to the domain Role type (permissionKeys JSON -> string[]). */
+function toDomainRole(row: { id: string; name: string; permissionKeys: unknown }): Role {
+  const keys = Array.isArray(row.permissionKeys) ? row.permissionKeys : [];
+  return { id: row.id, name: row.name, permissionKeys: keys as string[] };
 }
 
+/**
+ * Roles repository backed by Prisma (PostgreSQL).
+ * All methods are async. For role-by-name and permissions by role names use userRepository.
+ */
+export function roleRepository() {
+  return {
+    /** Returns all roles. */
+    async listAll(): Promise<Role[]> {
+      const rows = await prisma.role.findMany();
+      return rows.map(toDomainRole);
+    },
+
+    /** Finds a role by id; returns undefined if not found. */
+    async findById(id: string): Promise<Role | undefined> {
+      const row = await prisma.role.findUnique({ where: { id } });
+      return row ? toDomainRole(row) : undefined;
+    },
+
+    /** Aggregates permission keys for the given role ids (no duplicates). */
+    async getPermissionKeysByRoleIds(roleIds: string[]): Promise<string[]> {
+      const set = new Set<string>();
+      for (const roleId of roleIds) {
+        const row = await prisma.role.findUnique({ where: { id: roleId } });
+        if (row) {
+          const keys = Array.isArray(row.permissionKeys) ? row.permissionKeys : [];
+          keys.forEach((k) => set.add(k as string));
+        }
+      }
+      return Array.from(set);
+    },
+  };
+}
+
+/** Singleton instance for backward compatibility. */
 export const roleRepo = roleRepository();
