@@ -48,8 +48,8 @@ export const auditRepository = {
         action: event.action,
         entityType: event.entityType,
         entityId: event.entityId,
-        before: event.before ?? undefined,
-        after: event.after ?? undefined,
+        before: (event.before ?? undefined) as object | undefined,
+        after: (event.after ?? undefined) as object | undefined,
         correlationId: event.correlationId,
       },
     });
