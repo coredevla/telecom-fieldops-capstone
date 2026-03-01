@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { prisma } from '../db/prisma/prismaClient';
 import type {
   WorkOrder,
   WorkOrderItem,
@@ -23,47 +24,87 @@ export interface UpdateWorkOrderInput {
   items?: WorkOrderItem[];
 }
 
-const workOrders: WorkOrder[] = [];
+type PrismaWorkOrder = {
+  id: string;
+  type: string;
+  status: string;
+  customerId: string;
+  branchId: string | null;
+  planId: string | null;
+  assignedTechUserId: string | null;
+  version: number;
+  items: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function toDomainWorkOrder(row: PrismaWorkOrder): WorkOrder {
+  const items = Array.isArray(row.items) ? (row.items as WorkOrderItem[]) : [];
+  return {
+    id: row.id,
+    type: row.type as WorkOrderType,
+    status: row.status as WorkOrderStatus,
+    customerId: row.customerId,
+    branchId: row.branchId ?? undefined,
+    planId: row.planId ?? undefined,
+    assignedTechUserId: row.assignedTechUserId ?? undefined,
+    version: row.version,
+    items,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
 export const workOrderRepository = {
-  listAll(): WorkOrder[] {
-    return workOrders;
+  async listAll(): Promise<WorkOrder[]> {
+    const rows = await prisma.workOrder.findMany({ orderBy: { createdAt: 'desc' } });
+    return rows.map(toDomainWorkOrder);
   },
 
-  findById(id: string): WorkOrder | null {
-    return workOrders.find((wo) => wo.id === id) ?? null;
+  async findById(id: string): Promise<WorkOrder | null> {
+    const row = await prisma.workOrder.findUnique({ where: { id } });
+    return row ? toDomainWorkOrder(row) : null;
   },
 
-  create(input: CreateWorkOrderInput): WorkOrder {
-    const now = new Date().toISOString();
-    const order: WorkOrder = {
-      id: `wo_${randomUUID().slice(0, 8)}`,
-      type: input.type,
-      status: 'DRAFT',
-      customerId: input.customerId,
-      branchId: input.branchId,
-      planId: input.planId,
-      version: 0,
-      items: input.items ? [...input.items] : [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    workOrders.push(order);
-    return order;
+  async create(input: CreateWorkOrderInput): Promise<WorkOrder> {
+    const id = `wo_${randomUUID().slice(0, 8)}`;
+    const items = input.items ? [...input.items] : [];
+    const created = await prisma.workOrder.create({
+      data: {
+        id,
+        type: input.type,
+        status: 'DRAFT',
+        customerId: input.customerId,
+        branchId: input.branchId ?? null,
+        planId: input.planId ?? null,
+        assignedTechUserId: null,
+        version: 0,
+        items: items as object,
+      },
+    });
+    return toDomainWorkOrder(created);
   },
 
-  update(id: string, input: UpdateWorkOrderInput): WorkOrder | null {
-    const idx = workOrders.findIndex((wo) => wo.id === id);
-    if (idx === -1) return null;
-    const existing = workOrders[idx];
-    const now = new Date().toISOString();
-    const updated: WorkOrder = {
-      ...existing,
-      ...input,
-      version: typeof input.version === 'number' ? input.version : existing.version + 1,
-      updatedAt: now,
-    } as WorkOrder;
-    workOrders[idx] = updated;
-    return updated;
+  async update(id: string, input: UpdateWorkOrderInput): Promise<WorkOrder | null> {
+    const existing = await prisma.workOrder.findUnique({ where: { id } });
+    if (!existing) return null;
+
+    const data: {
+      status?: string;
+      version?: number;
+      branchId?: string | null;
+      planId?: string | null;
+      assignedTechUserId?: string | null;
+      items?: object;
+    } = {};
+    if (input.status !== undefined) data.status = input.status;
+    if (input.version !== undefined) data.version = input.version;
+    if (input.branchId !== undefined) data.branchId = input.branchId ?? null;
+    if (input.planId !== undefined) data.planId = input.planId ?? null;
+    if (input.assignedTechUserId !== undefined) data.assignedTechUserId = input.assignedTechUserId ?? null;
+    if (input.items !== undefined) data.items = input.items as object;
+
+    const updated = await prisma.workOrder.update({ where: { id }, data });
+    return toDomainWorkOrder(updated);
   },
 };

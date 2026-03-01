@@ -29,9 +29,13 @@ router.use(authenticate);
 router.get(
   '/work-orders',
   requirePermissions(['workorders:read']),
-  (_req: Request, res: Response) => {
-    const list = workOrderService.listWorkOrders();
-    res.status(200).json(list);
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const list = await workOrderService.listWorkOrders();
+      res.status(200).json(list);
+    } catch (err) {
+      next(err);
+    }
   },
 );
 
@@ -39,13 +43,17 @@ router.get(
   '/work-orders/:id',
   requirePermissions(['workorders:read']),
   validateParams(workOrderIdParams),
-  (req: Request, res: Response) => {
-    const wo = workOrderService.getWorkOrder(req.params.id);
-    if (!wo) {
-      res.status(404).json({ message: 'Work order not found' });
-      return;
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const wo = await workOrderService.getWorkOrder(req.params.id);
+      if (!wo) {
+        res.status(404).json({ message: 'Work order not found' });
+        return;
+      }
+      res.status(200).json(wo);
+    } catch (err) {
+      next(err);
     }
-    res.status(200).json(wo);
   },
 );
 

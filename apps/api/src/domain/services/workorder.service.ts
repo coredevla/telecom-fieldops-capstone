@@ -25,21 +25,22 @@ export interface UpdateWorkOrderStatusPayload {
 }
 
 export const workOrderService = {
-  listWorkOrders(): Array<WorkOrder & { allowedTransitions: WorkOrderStatus[] }> {
-    return workOrderRepository.listAll().map((wo) => ({
+  async listWorkOrders(): Promise<Array<WorkOrder & { allowedTransitions: WorkOrderStatus[] }>> {
+    const list = await workOrderRepository.listAll();
+    return list.map((wo) => ({
       ...wo,
       allowedTransitions: allowedTransitions(wo.type, wo.status),
     }));
   },
 
-  getWorkOrder(id: string): (WorkOrder & { allowedTransitions: WorkOrderStatus[] }) | null {
-    const wo = workOrderRepository.findById(id);
+  async getWorkOrder(id: string): Promise<(WorkOrder & { allowedTransitions: WorkOrderStatus[] }) | null> {
+    const wo = await workOrderRepository.findById(id);
     if (!wo) return null;
     return { ...wo, allowedTransitions: allowedTransitions(wo.type, wo.status) };
   },
 
   async createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
-    const created = workOrderRepository.create(payload);
+    const created = await workOrderRepository.create(payload);
     await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_CREATED,
@@ -58,7 +59,7 @@ export const workOrderService = {
     actorUserId: string | null,
     correlationId: string,
   ) {
-    const wo = workOrderRepository.findById(id);
+    const wo = await workOrderRepository.findById(id);
     if (!wo) {
       throw new ApiError(404, 'Not Found', 'Work order not found', 'urn:telecom:error:workorder-not-found');
     }
@@ -97,7 +98,7 @@ export const workOrderService = {
     }
 
     const before = { status: wo.status, version: wo.version };
-    const updated = workOrderRepository.update(id, {
+    const updated = await workOrderRepository.update(id, {
       status: input.newStatus,
       version: wo.version + 1,
     });
