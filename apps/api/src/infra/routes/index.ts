@@ -3,6 +3,7 @@ import { healthRouter } from './health';
 import { authRouter } from '../../routes/auth.routes';
 import { auditRouter } from '../../routes/audit.routes';
 import { inventoryRouter } from '../../routes/inventory.routes';
+import { kpiRouter } from '../../routes/kpi.routes';
 import plansRouter from '../../routes/plans.routes';
 import productsRouter from '../../routes/products.routes';
 import usersRouter from '../../routes/users.routes';
@@ -20,10 +21,9 @@ export function buildApiRouter() {
   router.use('/auth', authRouter());
   router.use(inventoryRouter());
   router.use('/work-orders', workOrdersRouter);
+  router.use(kpiRouter());
   router.use('/users', usersRouter);
   router.use('/roles', rolesRouter);
-
-  /// Mount audit: protected by auth + permit audit:read
   router.use('/audit', authenticate, requirePermissions(['audit:read']), auditRouter());
 
   return router;

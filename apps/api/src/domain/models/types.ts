@@ -187,16 +187,27 @@ export interface WorkOrderItem {
   qty: number;
 }
 
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  completed: boolean;
+}
+
 export interface WorkOrder {
   id: string;
   type: WorkOrderType;
   status: WorkOrderStatus;
   customerId: string;
+  createdByUserId?: string;
   branchId?: string;
   planId?: string;
   assignedTechUserId?: string;
   version: number;
   items?: WorkOrderItem[];
+  technicianNotes?: string | null;
+  checklist?: ChecklistItem[] | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

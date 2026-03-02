@@ -1,13 +1,9 @@
 import { ApiError } from '../errors/apiError';
-import type {
-  WorkOrder,
-  WorkOrderStatus,
-  WorkOrderType,
-  WorkOrderItem,
-} from '../models/types';
+import type { ChecklistItem, WorkOrder, WorkOrderItem, WorkOrderStatus, WorkOrderType } from '../models/types';
+import type { UpdateWorkOrderInput } from '../../infra/repositories/workorder.repo';
 import { workOrderRepository } from '../../infra/repositories/workorder.repo';
 import { inventoryService } from './invetory.service';
-import { validateTransition, allowedTransitions } from '../stateMachine/workOrderStateMachine';
+import { allowedTransitions, validateTransition } from '../stateMachine/workOrderStateMachine';
 import { auditService } from './audit.service';
 import { AUDIT_ACTIONS } from '../models/types';
 
@@ -25,8 +21,10 @@ export interface UpdateWorkOrderStatusPayload {
 }
 
 export const workOrderService = {
-  async listWorkOrders(): Promise<Array<WorkOrder & { allowedTransitions: WorkOrderStatus[] }>> {
-    const list = await workOrderRepository.listAll();
+  async listWorkOrders(assignedToUserId?: string): Promise<Array<WorkOrder & { allowedTransitions: WorkOrderStatus[] }>> {
+    const list = assignedToUserId
+      ? await workOrderRepository.listByAssignedTech(assignedToUserId)
+      : await workOrderRepository.listAll();
     return list.map((wo) => ({
       ...wo,
       allowedTransitions: allowedTransitions(wo.type, wo.status),
@@ -40,7 +38,11 @@ export const workOrderService = {
   },
 
   async createWorkOrder(payload: CreateWorkOrderPayload, actorUserId: string | null, correlationId: string) {
-    const created = await workOrderRepository.create(payload);
+    const created = await workOrderRepository.create({
+      ...payload,
+      createdByUserId: actorUserId ?? undefined,
+    });
+
     await auditService.record({
       actorUserId,
       action: AUDIT_ACTIONS.WORKORDER_CREATED,
@@ -50,6 +52,7 @@ export const workOrderService = {
       after: created as unknown as Record<string, unknown>,
       correlationId,
     });
+
     return created;
   },
 
@@ -64,19 +67,12 @@ export const workOrderService = {
       throw new ApiError(404, 'Not Found', 'Work order not found', 'urn:telecom:error:workorder-not-found');
     }
 
-    // optimistic locking
     if (input.baseVersion !== wo.version) {
-      throw new ApiError(
-        409,
-        'Conflict',
-        'Version mismatch',
-        'urn:telecom:error:version_mismatch',
-      );
+      throw new ApiError(409, 'Conflict', 'Version mismatch', 'urn:telecom:error:version_mismatch');
     }
 
     validateTransition(wo.type, wo.status, input.newStatus);
 
-    // inventory reservation side effect
     if (input.newStatus === 'INVENTORY_RESERVATION' && wo.items && wo.items.length > 0) {
       try {
         await inventoryService.reserveForRequest({
@@ -86,25 +82,17 @@ export const workOrderService = {
         });
       } catch (err) {
         if (err instanceof ApiError && err.message.includes('Insufficient stock')) {
-          throw new ApiError(
-            409,
-            'Conflict',
-            'stock_insufficient',
-            'urn:telecom:error:stock_insufficient',
-          );
+          throw new ApiError(409, 'Conflict', 'stock_insufficient', 'urn:telecom:error:stock_insufficient');
         }
         throw err;
       }
     }
 
-    // RB-05: cancelar debe liberar inventario
     if (input.newStatus === 'CANCELLED') {
       try {
-        inventoryService.releaseForRequest(wo.id);
+        await inventoryService.releaseForRequest(wo.id);
       } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          // no reservation existed, idempotent
-        } else {
+        if (!(err instanceof ApiError && err.status === 404)) {
           throw err;
         }
       }
@@ -115,6 +103,7 @@ export const workOrderService = {
       status: input.newStatus,
       version: wo.version + 1,
     });
+
     if (!updated) {
       throw new ApiError(500, 'Internal Server Error', 'Unable to update work order', 'urn:telecom:error:internal');
     }
@@ -130,5 +119,52 @@ export const workOrderService = {
     });
 
     return updated;
+  },
+
+  async assignTech(
+    id: string,
+    assignedTechUserId: string | null,
+    actorUserId: string | null,
+    correlationId: string,
+  ) {
+    const wo = await workOrderRepository.findById(id);
+    if (!wo) return null;
+
+    const before = { assignedTechUserId: wo.assignedTechUserId };
+    const payload: UpdateWorkOrderInput = {
+      assignedTechUserId: assignedTechUserId === null ? null : assignedTechUserId,
+    };
+    const updated = await workOrderRepository.update(id, payload);
+    if (!updated) return null;
+
+    await auditService.record({
+      actorUserId,
+      action: AUDIT_ACTIONS.WORKORDER_STATUS,
+      entityType: 'WorkOrder',
+      entityId: id,
+      before,
+      after: { assignedTechUserId: updated.assignedTechUserId },
+      correlationId,
+    });
+
+    return { ...updated, allowedTransitions: allowedTransitions(updated.type, updated.status) };
+  },
+
+  async updateTechDetails(
+    id: string,
+    payload: { technicianNotes?: string | null; checklist?: ChecklistItem[] | null },
+    actorUserId: string | null,
+  ) {
+    const wo = await workOrderRepository.findById(id);
+    if (!wo) return null;
+    if (wo.assignedTechUserId !== actorUserId) {
+      throw new ApiError(403, 'Forbidden', 'Only the assigned technician can update notes/checklist.', 'urn:telecom:error:forbidden');
+    }
+    const updated = await workOrderRepository.update(id, {
+      technicianNotes: payload.technicianNotes,
+      checklist: payload.checklist,
+    });
+    if (!updated) return null;
+    return { ...updated, allowedTransitions: allowedTransitions(updated.type, updated.status) };
   },
 };

@@ -5,8 +5,8 @@ import { ProductDetail } from "../components/catalog/ProductDetail";
 import type { Product } from "../types/product";
 import Layout from "../layouts/Layout";
 import PageNavigation from "../components/PageNavigation";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+import { apiClient } from "../services/apiClient";
+import StatusBanner from "../components/StatusBanner";
 
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: "Todos",
@@ -33,9 +33,7 @@ export const CatalogPage: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`${API_URL}/api/v1/products`);
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        const data: Product[] = await res.json();
+        const data = await apiClient.get<Product[]>("/api/v1/catalog/products");
         setProducts(data);
       } catch (err) {
         console.error("Error cargando productos:", err);
@@ -110,13 +108,20 @@ export const CatalogPage: React.FC = () => {
             </section>
           ) : error ? (
             <section className="bg-white border border-gray-200 rounded-sm p-6">
-              <p className="text-sm text-gray-700">{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-4 bg-white border border-gray-200 text-gray-800 px-5 py-2 text-sm rounded-sm hover:border-[#002D72]"
-              >
-                Reintentar
-              </button>
+              <StatusBanner
+                tone="error"
+                title="No se pudieron cargar los productos"
+                message={error}
+                role="alert"
+                action={
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="bg-white border border-red-200 text-red-700 px-5 py-2 text-sm rounded-sm hover:border-red-400"
+                  >
+                    Reintentar
+                  </button>
+                }
+              />
             </section>
           ) : filteredProducts.length === 0 ? (
             <section className="bg-white border border-gray-200 rounded-sm p-6 text-center">

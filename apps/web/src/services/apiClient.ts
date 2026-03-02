@@ -6,8 +6,9 @@
  */
 
 import { ApiError, ProblemDetails } from '../types/plans';
+import { API_BASE_URL } from '../config/env';
 
-const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const BASE_URL = API_BASE_URL;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
+async function handleResponse<T>(res: Response, requestUrl: string): Promise<T> {
   if (res.ok) return res.json() as Promise<T>;
 
   const body: ProblemDetails = await res.json().catch(() => ({
@@ -33,6 +34,16 @@ async function handleResponse<T>(res: Response): Promise<T> {
     instance:      res.url,
     correlationId: '',
   }));
+
+  // 401 con token en localStorage: sesión expirada o inválida; limpiar y redirigir a login
+  if (res.status === 401 && typeof window !== 'undefined' && localStorage.getItem('access_token')) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+    if (!requestUrl.includes('/auth/login')) {
+      window.location.href = '/?session=expired';
+    }
+  }
 
   throw new ApiError(body.detail || body.title, res.status, body);
 }
@@ -45,7 +56,7 @@ export const apiClient = {
       method:  'GET',
       headers: getAuthHeaders(),
     });
-    return handleResponse<T>(res);
+    return handleResponse<T>(res, path);
   },
 
   async patch<T>(path: string, body?: unknown): Promise<T> {
@@ -54,7 +65,7 @@ export const apiClient = {
       headers: getAuthHeaders(),
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    return handleResponse<T>(res);
+    return handleResponse<T>(res, path);
   },
 
   async post<T>(path: string, body?: unknown): Promise<T> {
@@ -63,7 +74,7 @@ export const apiClient = {
       headers: getAuthHeaders(),
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    return handleResponse<T>(res);
+    return handleResponse<T>(res, path);
   },
 
   async put<T>(path: string, body?: unknown): Promise<T> {
@@ -72,7 +83,7 @@ export const apiClient = {
       headers: getAuthHeaders(),
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    return handleResponse<T>(res);
+    return handleResponse<T>(res, path);
   },
 
   async delete<T>(path: string): Promise<T> {
@@ -80,6 +91,6 @@ export const apiClient = {
       method:  'DELETE',
       headers: getAuthHeaders(),
     });
-    return handleResponse<T>(res);
+    return handleResponse<T>(res, path);
   },
 };
