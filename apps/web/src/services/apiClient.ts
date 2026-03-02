@@ -44,7 +44,10 @@ export type ReservationResponse = {
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const normalizedPath = path.startsWith(API_PREFIX) ? path.slice(API_PREFIX.length) || '/' : path;
-  const accessToken = authService.getSession()?.accessToken;
+  const accessToken =
+    authService.getSession()?.accessToken ??
+    window.localStorage.getItem('access_token') ??
+    undefined;
   const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
     headers: {
       'Content-Type': 'application/json',
