@@ -1,11 +1,11 @@
-import { Outlet } from "react-router-dom";
+import { Outlet } from 'react-router-dom';
+import AuthSessionManager from './app/AuthSessionManager';
 
-function App() {
+export default function App() {
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className='min-w-screen min-h-screen'>
+      <AuthSessionManager />
       <Outlet />
     </div>
-  );
+  )
 }
-
-export default App;

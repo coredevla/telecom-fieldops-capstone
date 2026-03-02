@@ -1,33 +1,33 @@
-import React, { useState, useEffect } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiClient } from "../services/apiClient";
-import { ApiError } from "../types/plans";
-import StatusBanner from "../components/StatusBanner";
+import { authService } from "../services/auth";
 
-interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  tokenType: string;
-  expiresIn: number;
-  refreshExpiresIn: number;
-  user: {
-    id: string;
-    email: string;
-    blocked: boolean;
-    roles: string[];
-    permissions: string[];
-  };
-}
+const INACTIVITY_LIMIT_MS = 2 * 60 * 1000;
 
 function LoginPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const canSubmit = email.trim().includes("@") && password.length >= 8 && !loading;
+
+  useEffect(() => {
+    const session = authService.getSession();
+    if (!session) {
+      return;
+    }
+
+    if (authService.isInactive(INACTIVITY_LIMIT_MS)) {
+      authService.clearSession();
+      return;
+    }
+
+    navigate("/reserve", { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
     if (searchParams.get("session") === "expired") {
@@ -36,80 +36,131 @@ function LoginPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const canSubmit = email.trim().includes("@") && password.length >= 8 && !loading;
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
+    setError("");
 
     try {
-      const data = await apiClient.post<LoginResponse>("/api/v1/auth/login", {
-        email: email.trim(),
-        password,
-      });
-
-      localStorage.setItem("access_token", data.accessToken);
-      localStorage.setItem("refresh_token", data.refreshToken);
-      localStorage.setItem("user", JSON.stringify(data.user));
-
-      navigate("/home");
+      const session = await authService.loginWithPassword(email, password);
+      authService.setSession(session);
+      authService.markActivity();
+      navigate("/reserve", { replace: true });
     } catch (err) {
-      if (err instanceof ApiError && err.body?.detail) {
-        setError(err.body.detail);
-      } else if (err instanceof Error) {
-        const msg = err.message || "Error al iniciar sesion.";
-        setError(msg.includes("fetch") || msg.includes("Network") ? "No se pudo conectar con el servidor. Revisa que VITE_API_URL apunte a la API y que CORS permita este origen." : msg);
-      } else {
-        setError("Error al iniciar sesion.");
-      }
+      setError(err instanceof Error ? err.message : "Error al iniciar sesion.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <header className="bg-white border border-gray-200 rounded-sm p-6 mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-gray-800">Iniciar sesion</h1>
-          <p className="text-sm text-gray-600 mt-1">Accede con tus credenciales del sistema.</p>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f3f4f6",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2rem 1rem",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 560 }}>
+        <header
+          style={{
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 4,
+            padding: "1.5rem",
+            marginBottom: "1.25rem",
+            textAlign: "center",
+          }}
+        >
+          <h1 style={{ margin: 0, color: "#1f2937", fontSize: "1.6rem", fontWeight: 600 }}>Iniciar sesion</h1>
+          <p style={{ margin: "0.4rem 0 0", color: "#4b5563", fontSize: "0.9rem" }}>
+            Accede con tus credenciales del sistema.
+          </p>
         </header>
 
-        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-sm p-6 flex flex-col gap-4">
-          {error && <StatusBanner tone="error" role="alert" title="No se pudo iniciar sesion" message={error} />}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 4,
+            padding: "1.5rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1rem",
+          }}
+        >
+          {error ? (
+            <div
+              role="alert"
+              style={{
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                color: "#991b1b",
+                padding: "0.75rem",
+                borderRadius: 4,
+                fontSize: "0.9rem",
+              }}
+            >
+              <strong>No se pudo iniciar sesion.</strong>
+              <div style={{ marginTop: 4 }}>{error}</div>
+            </div>
+          ) : null}
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm text-gray-700">Correo electronico</span>
+          <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+            <span style={{ fontSize: "0.9rem", color: "#374151" }}>Correo electronico</span>
             <input
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@telecom.local"
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="correo@dominio.com"
               autoComplete="email"
               autoFocus
-              className="border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
+              style={{
+                border: "1px solid #d1d5db",
+                padding: "0.6rem 0.7rem",
+                fontSize: "0.9rem",
+                color: "#1f2937",
+              }}
             />
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm text-gray-700">Contrasena</span>
-            <div className="flex gap-2">
+          <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+            <span style={{ fontSize: "0.9rem", color: "#374151" }}>Contrasena</span>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => setPassword(event.target.value)}
                 placeholder="********"
                 autoComplete="current-password"
-                className="flex-1 border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#002D72]"
+                style={{
+                  flex: 1,
+                  border: "1px solid #d1d5db",
+                  padding: "0.6rem 0.7rem",
+                  fontSize: "0.9rem",
+                  color: "#1f2937",
+                }}
               />
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="bg-white border border-gray-200 text-gray-800 px-4 py-2 text-sm rounded-sm hover:border-[#002D72]"
+                onClick={() => setShowPassword((prev) => !prev)}
                 aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  color: "#1f2937",
+                  padding: "0.6rem 0.9rem",
+                  fontSize: "0.85rem",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                }}
               >
                 {showPassword ? "Ocultar" : "Mostrar"}
               </button>
@@ -119,24 +170,20 @@ function LoginPage() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="bg-[#002D72] text-white px-5 py-2 text-sm rounded-sm hover:bg-[#001F4D] disabled:opacity-50"
+            style={{
+              background: "#002D72",
+              color: "#fff",
+              border: 0,
+              padding: "0.65rem 1rem",
+              fontSize: "0.9rem",
+              borderRadius: 4,
+              cursor: canSubmit ? "pointer" : "not-allowed",
+              opacity: canSubmit ? 1 : 0.55,
+            }}
           >
             {loading ? "Ingresando..." : "Ingresar"}
           </button>
         </form>
-
-        <section className="bg-white border border-gray-200 rounded-sm p-6 mt-6">
-          <h2 className="text-2xl font-semibold text-gray-800">Credenciales de prueba</h2>
-          <p className="text-sm text-gray-600 mt-1">Usa estas cuentas para acceder al sistema en ambiente demo.</p>
-          <div className="mt-4 space-y-2">
-            <p className="text-sm text-gray-700">
-              Admin: <span className="text-gray-600">admin@telecom.local / Admin123!</span>
-            </p>
-            <p className="text-sm text-gray-700">
-              Ventas: <span className="text-gray-600">ventas@telecom.local / Ventas123!</span>
-            </p>
-          </div>
-        </section>
       </div>
     </div>
   );

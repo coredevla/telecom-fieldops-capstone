@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { env } from '../config/env';
 import { authService } from '../domain/services/auth.service';
+import { oauthService } from '../domain/services/oauth.service';
 import { logger } from '../infra/logger/logger';
 import { loginRateLimit } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validate';
@@ -17,11 +19,17 @@ const refreshSchema = z.object({
 export function authRouter() {
   const router = Router();
 
-  /** POST /login: authenticate with email/password, returns tokens and user. */
   router.post('/login', loginRateLimit, validateBody(loginSchema), async (req, res, next) => {
     try {
       const { email, password } = req.body;
-      const response = await authService.login(email, password, req.correlationId);
+      const useAuth0PasswordLogin = env.oauth.auth0.passwordGrantEnabled && env.nodeEnv !== 'test';
+      const response = useAuth0PasswordLogin
+        ? await authService.loginWithTrustedEmail(
+            await oauthService.authenticateWithPassword(email, password),
+            'Auth0',
+            req.correlationId,
+          )
+        : await authService.login(email, password, req.correlationId);
 
       logger.info('User logged in', {
         correlationId: req.correlationId,
@@ -31,23 +39,10 @@ export function authRouter() {
 
       res.status(200).json(response);
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      const errPayload: Record<string, unknown> = {
-        correlationId: req.correlationId,
-        path: req.path,
-        error: err.message,
-        errorName: err.name,
-        stack: err.stack,
-      };
-      if (error && typeof (error as { code?: string }).code === 'string') {
-        errPayload.code = (error as { code: string }).code;
-      }
-      logger.error(errPayload, 'Login request failed');
       next(error);
     }
   });
 
-  /** POST /refresh: rotate refresh token, returns new access + refresh tokens. */
   router.post('/refresh', validateBody(refreshSchema), async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
@@ -58,7 +53,6 @@ export function authRouter() {
     }
   });
 
-  /** POST /logout: revoke refresh token and record audit event. */
   router.post('/logout', validateBody(refreshSchema), async (req, res, next) => {
     try {
       const { refreshToken } = req.body;

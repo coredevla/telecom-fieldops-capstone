@@ -1,96 +1,121 @@
-/**
- * apiClient.ts
- * Cliente HTTP base del proyecto.
- * Adjunta el token Bearer automáticamente y lanza ApiError en respuestas no-ok.
- * RNF-OBS-01: Incluye correlationId en cada request.
- */
+import { authService } from './auth';
 
-import { ApiError, ProblemDetails } from '../types/plans';
-import { API_BASE_URL } from '../config/env';
+const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
+const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
+const API_BASE_URL = normalizedApiUrl.endsWith('/api/v1')
+  ? normalizedApiUrl
+  : `${normalizedApiUrl}/api/v1`;
+const API_PREFIX = '/api/v1';
 
-const BASE_URL = API_BASE_URL;
+export type Branch = {
+  id: string;
+  name: string;
+  isMain: boolean;
+};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+export type Product = {
+  id: string;
+  name: string;
+  category: string;
+  isSerialized: boolean;
+};
 
-function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem('access_token');
-  const correlationId = crypto.randomUUID();
+export type InventoryRow = {
+  id: string;
+  branchId: string;
+  productId: string;
+  productName: string;
+  qtyAvailable: number;
+  qtyReserved: number;
+  updatedAt: string;
+};
 
-  return {
-    'Content-Type': 'application/json',
-    'X-Correlation-Id': correlationId,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
+export type ReservationItem = {
+  productId: string;
+  qty: number;
+};
 
-async function handleResponse<T>(res: Response, requestUrl: string): Promise<T> {
-  if (res.ok) return res.json() as Promise<T>;
+export type ReservationResponse = {
+  workOrderId: string;
+  branchId: string;
+  items: ReservationItem[];
+  reservedAt: string;
+};
 
-  const body: ProblemDetails = await res.json().catch(() => ({
-    type:          'about:blank',
-    title:         'Error inesperado',
-    status:        res.status,
-    detail:        'No se pudo procesar la respuesta del servidor.',
-    instance:      res.url,
-    correlationId: '',
-  }));
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const normalizedPath = path.startsWith(API_PREFIX) ? path.slice(API_PREFIX.length) || '/' : path;
+  const accessToken =
+    authService.getSession()?.accessToken ??
+    window.localStorage.getItem('access_token') ??
+    undefined;
+  const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(options?.headers ?? {}),
+    },
+    ...options
+  });
 
-  // 401 con token en localStorage: sesión expirada o inválida; limpiar y redirigir a login
-  if (res.status === 401 && typeof window !== 'undefined' && localStorage.getItem('access_token')) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user');
-    if (!requestUrl.includes('/auth/login')) {
-      window.location.href = '/?session=expired';
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const data = (await response.json()) as { message?: string; detail?: string };
+      if (data.detail || data.message) {
+        message = data.detail ?? data.message ?? message;
+      }
+    } catch {
+      // No-op when response has no JSON body.
     }
+    throw new Error(message);
   }
 
-  throw new ApiError(body.detail || body.title, res.status, body);
+  return (await response.json()) as T;
 }
 
-// ─── Métodos públicos ─────────────────────────────────────────────────────────
-
 export const apiClient = {
-  async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method:  'GET',
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<T>(res, path);
+  get<T>(path: string): Promise<T> {
+    return request<T>(path);
   },
-
-  async patch<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method:  'PATCH',
-      headers: getAuthHeaders(),
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'POST',
+      ...(typeof body !== 'undefined' ? { body: JSON.stringify(body) } : {}),
     });
-    return handleResponse<T>(res, path);
   },
-
-  async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method:  'POST',
-      headers: getAuthHeaders(),
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'PATCH',
+      ...(typeof body !== 'undefined' ? { body: JSON.stringify(body) } : {}),
     });
-    return handleResponse<T>(res, path);
   },
-
-  async put<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method:  'PUT',
-      headers: getAuthHeaders(),
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  delete<T>(path: string): Promise<T> {
+    return request<T>(path, {
+      method: 'DELETE',
     });
-    return handleResponse<T>(res, path);
   },
-
-  async delete<T>(path: string): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method:  'DELETE',
-      headers: getAuthHeaders(),
+  getBranches(): Promise<Branch[]> {
+    return request<Branch[]>('/inventory/branches');
+  },
+  getProducts(): Promise<Product[]> {
+    return request<Product[]>('/inventory/products');
+  },
+  getInventory(branchId: string): Promise<InventoryRow[]> {
+    return request<InventoryRow[]>(`/inventory?branchId=${encodeURIComponent(branchId)}`);
+  },
+  reserveInventory(input: {
+    workOrderId: string;
+    branchId: string;
+    items: ReservationItem[];
+  }): Promise<ReservationResponse> {
+    return request<ReservationResponse>('/inventory/reservations', {
+      method: 'POST',
+      body: JSON.stringify(input)
     });
-    return handleResponse<T>(res, path);
   },
+  releaseReservation(workOrderId: string): Promise<ReservationResponse> {
+    return request<ReservationResponse>(`/inventory/reservations/${encodeURIComponent(workOrderId)}`, {
+      method: 'DELETE'
+    });
+  }
 };
