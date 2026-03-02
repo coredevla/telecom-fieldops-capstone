@@ -1,7 +1,7 @@
 import request from 'supertest';
 import app from '../src/infra/app';
 import { prisma } from '../src/infra/db/prisma/prismaClient';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const login = async (email: string, password: string) => {
   return request(app).post('/api/v1/auth/login').send({ email, password });
