@@ -1,6 +1,7 @@
 /**
  * Cola offline (RF-10): guardar cambios cuando no hay red y sincronizar al volver.
  * Formato compatible con ADR-0002 (export/import).
+ * RF-11: exportar cola a JSON para descarga.
  */
 
 const STORAGE_KEY = 'offlineQueue';
