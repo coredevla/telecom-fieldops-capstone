@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { env } from '../config/env';
 import { authService } from '../domain/services/auth.service';
+import { oauthService } from '../domain/services/oauth.service';
 import { logger } from '../infra/logger/logger';
 import { loginRateLimit } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validate';
@@ -17,10 +19,17 @@ const refreshSchema = z.object({
 export function authRouter() {
   const router = Router();
 
-  router.post('/login', loginRateLimit, validateBody(loginSchema), (req, res, next) => {
+  router.post('/login', loginRateLimit, validateBody(loginSchema), async (req, res, next) => {
     try {
       const { email, password } = req.body;
-      const response = authService.login(email, password, req.correlationId);
+      const useAuth0PasswordLogin = env.oauth.auth0.passwordGrantEnabled && env.nodeEnv !== 'test';
+      const response = useAuth0PasswordLogin
+        ? authService.loginWithTrustedEmail(
+            await oauthService.authenticateWithPassword(email, password),
+            'Auth0',
+            req.correlationId,
+          )
+        : authService.login(email, password, req.correlationId);
 
       logger.info('User logged in', {
         correlationId: req.correlationId,

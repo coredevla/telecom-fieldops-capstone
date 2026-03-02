@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import App from "../App";
 import LoginPage from "../pages/Login";
 import InventoryReservationPage from "../pages/InventoryReservationPage";
+import RequireAuth from "./RequireAuth";
 
 export const router = createBrowserRouter([
     {
@@ -14,7 +15,11 @@ export const router = createBrowserRouter([
             },
             {
                 path: "reserve",
-                element: <InventoryReservationPage />
+                element: (
+                    <RequireAuth>
+                        <InventoryReservationPage />
+                    </RequireAuth>
+                )
             }
         ]
     }

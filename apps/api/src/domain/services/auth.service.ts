@@ -7,6 +7,7 @@ import {
   type AccessTokenClaims,
   type LoginResponse,
   type RefreshTokenClaims,
+  type User,
 } from '../models/types';
 import { userRepository } from '../../infra/repositories/user.repo';
 import { ApiError } from '../errors/apiError';
@@ -27,6 +28,71 @@ const validateRefreshTokenNotRevoked = (jti: string): void => {
   if (userRepository.isRefreshTokenRevoked(jti)) {
     throw new ApiError(401, 'Unauthorized', 'Refresh token was revoked.', 'urn:telecom:error:token-revoked');
   }
+};
+
+const issueLoginResponse = (user: User, correlationId: string): LoginResponse => {
+  const permissions = userRepository.getPermissionKeysForRoles(user.roles);
+  const accessJti = uuidv4();
+  const refreshJti = uuidv4();
+
+  const accessToken = jwt.sign(
+    {
+      userId: user.id,
+      email: user.email,
+      roles: user.roles,
+      permissions,
+      blocked: user.blocked,
+      type: 'access',
+    },
+    env.jwt.accessSecret,
+    {
+      expiresIn: env.jwt.accessExpiresInSeconds,
+      issuer: env.jwt.issuer,
+      audience: env.jwt.audience,
+      jwtid: accessJti,
+      subject: user.id,
+    },
+  );
+
+  const refreshToken = jwt.sign(
+    {
+      userId: user.id,
+      type: 'refresh',
+    },
+    env.jwt.refreshSecret,
+    {
+      expiresIn: env.jwt.refreshExpiresInSeconds,
+      issuer: env.jwt.issuer,
+      audience: env.jwt.audience,
+      jwtid: refreshJti,
+      subject: user.id,
+    },
+  );
+
+  auditService.record({
+    actorUserId: user.id,
+    action: AUDIT_ACTIONS.USER_LOGIN,
+    entityType: 'user',
+    entityId: user.id,
+    before: null,
+    after: { login: true },
+    correlationId,
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    tokenType: 'Bearer',
+    expiresIn: env.jwt.accessExpiresInSeconds,
+    refreshExpiresIn: env.jwt.refreshExpiresInSeconds,
+    user: {
+      id: user.id,
+      email: user.email,
+      blocked: user.blocked,
+      roles: user.roles,
+      permissions,
+    },
+  };
 };
 
 export const authService = {
@@ -55,68 +121,25 @@ export const authService = {
       throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
     }
 
-    const permissions = userRepository.getPermissionKeysForRoles(user.roles);
-    const accessJti = uuidv4();
-    const refreshJti = uuidv4();
+    return issueLoginResponse(user, correlationId);
+  },
 
-    const accessToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        roles: user.roles,
-        permissions,
-        blocked: user.blocked,
-        type: 'access',
-      },
-      env.jwt.accessSecret,
-      {
-        expiresIn: env.jwt.accessExpiresInSeconds,
-        issuer: env.jwt.issuer,
-        audience: env.jwt.audience,
-        jwtid: accessJti,
-        subject: user.id,
-      },
-    );
+  loginWithTrustedEmail(email: string, provider: string, correlationId: string): LoginResponse {
+    const user = userRepository.findByEmail(email);
+    if (!user) {
+      throw new ApiError(
+        401,
+        'Unauthorized',
+        `No local account is linked to this ${provider} email.`,
+        'urn:telecom:error:oauth-account-not-linked',
+      );
+    }
 
-    const refreshToken = jwt.sign(
-      {
-        userId: user.id,
-        type: 'refresh',
-      },
-      env.jwt.refreshSecret,
-      {
-        expiresIn: env.jwt.refreshExpiresInSeconds,
-        issuer: env.jwt.issuer,
-        audience: env.jwt.audience,
-        jwtid: refreshJti,
-        subject: user.id,
-      },
-    );
+    if (user.blocked) {
+      throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
+    }
 
-    auditService.record({
-      actorUserId: user.id,
-      action: AUDIT_ACTIONS.USER_LOGIN,
-      entityType: 'user',
-      entityId: user.id,
-      before: null,
-      after: { login: true },
-      correlationId,
-    });
-
-    return {
-      accessToken,
-      refreshToken,
-      tokenType: 'Bearer',
-      expiresIn: env.jwt.accessExpiresInSeconds,
-      refreshExpiresIn: env.jwt.refreshExpiresInSeconds,
-      user: {
-        id: user.id,
-        email: user.email,
-        blocked: user.blocked,
-        roles: user.roles,
-        permissions,
-      },
-    };
+    return issueLoginResponse(user, correlationId);
   },
 
   verifyAccessToken(token: string): AccessTokenClaims {

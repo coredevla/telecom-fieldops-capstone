@@ -1,4 +1,10 @@
-const API_BASE_URL = 'http://localhost:3000/api/v1';
+import { authService } from './auth';
+
+const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
+const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
+const API_BASE_URL = normalizedApiUrl.endsWith('/api/v1')
+  ? normalizedApiUrl
+  : `${normalizedApiUrl}/api/v1`;
 
 export type Branch = {
   id: string;
@@ -36,17 +42,22 @@ export type ReservationResponse = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const accessToken = authService.getSession()?.accessToken;
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(options?.headers ?? {}),
+    },
     ...options
   });
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {
-      const data = (await response.json()) as { message?: string };
-      if (data.message) {
-        message = data.message;
+      const data = (await response.json()) as { message?: string; detail?: string };
+      if (data.detail || data.message) {
+        message = data.detail ?? data.message ?? message;
       }
     } catch {
       // No-op when response has no JSON body.
