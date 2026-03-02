@@ -5,6 +5,7 @@ const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = normalizedApiUrl.endsWith('/api/v1')
   ? normalizedApiUrl
   : `${normalizedApiUrl}/api/v1`;
+const API_PREFIX = '/api/v1';
 
 export type Branch = {
   id: string;
@@ -42,8 +43,9 @@ export type ReservationResponse = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const normalizedPath = path.startsWith(API_PREFIX) ? path.slice(API_PREFIX.length) || '/' : path;
   const accessToken = authService.getSession()?.accessToken;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -69,6 +71,26 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const apiClient = {
+  get<T>(path: string): Promise<T> {
+    return request<T>(path);
+  },
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'POST',
+      ...(typeof body !== 'undefined' ? { body: JSON.stringify(body) } : {}),
+    });
+  },
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'PATCH',
+      ...(typeof body !== 'undefined' ? { body: JSON.stringify(body) } : {}),
+    });
+  },
+  delete<T>(path: string): Promise<T> {
+    return request<T>(path, {
+      method: 'DELETE',
+    });
+  },
   getBranches(): Promise<Branch[]> {
     return request<Branch[]>('/inventory/branches');
   },

@@ -15,8 +15,8 @@ import { auditService } from './audit.service';
 
 const unixNow = (): number => Math.floor(Date.now() / 1000);
 
-const getUserOrThrow = (userId: string) => {
-  const user = userRepository.findById(userId);
+const getUserOrThrow = async (userId: string): Promise<User> => {
+  const user = await userRepository.findById(userId);
   if (!user) {
     throw new ApiError(401, 'Unauthorized', 'Invalid token subject.', 'urn:telecom:error:invalid-token');
   }
@@ -24,14 +24,14 @@ const getUserOrThrow = (userId: string) => {
   return user;
 };
 
-const validateRefreshTokenNotRevoked = (jti: string): void => {
-  if (userRepository.isRefreshTokenRevoked(jti)) {
+const validateRefreshTokenNotRevoked = async (jti: string): Promise<void> => {
+  if (await userRepository.isRefreshTokenRevoked(jti)) {
     throw new ApiError(401, 'Unauthorized', 'Refresh token was revoked.', 'urn:telecom:error:token-revoked');
   }
 };
 
-const issueLoginResponse = (user: User, correlationId: string): LoginResponse => {
-  const permissions = userRepository.getPermissionKeysForRoles(user.roles);
+const issueLoginResponse = async (user: User, correlationId: string): Promise<LoginResponse> => {
+  const permissions = await userRepository.getPermissionKeysForRoles(user.roles);
   const accessJti = uuidv4();
   const refreshJti = uuidv4();
 
@@ -69,7 +69,7 @@ const issueLoginResponse = (user: User, correlationId: string): LoginResponse =>
     },
   );
 
-  auditService.record({
+  await auditService.record({
     actorUserId: user.id,
     action: AUDIT_ACTIONS.USER_LOGIN,
     entityType: 'user',
@@ -96,8 +96,8 @@ const issueLoginResponse = (user: User, correlationId: string): LoginResponse =>
 };
 
 export const authService = {
-  login(email: string, password: string, correlationId: string): LoginResponse {
-    const user = userRepository.findByEmail(email);
+  async login(email: string, password: string, correlationId: string): Promise<LoginResponse> {
+    const user = await userRepository.findByEmail(email);
     if (!user) {
       throw new ApiError(
         401,
@@ -121,11 +121,11 @@ export const authService = {
       throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
     }
 
-    return issueLoginResponse(user, correlationId);
+    return await issueLoginResponse(user, correlationId);
   },
 
-  loginWithTrustedEmail(email: string, provider: string, correlationId: string): LoginResponse {
-    const user = userRepository.findByEmail(email);
+  async loginWithTrustedEmail(email: string, provider: string, correlationId: string): Promise<LoginResponse> {
+    const user = await userRepository.findByEmail(email);
     if (!user) {
       throw new ApiError(
         401,
@@ -139,7 +139,7 @@ export const authService = {
       throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
     }
 
-    return issueLoginResponse(user, correlationId);
+    return await issueLoginResponse(user, correlationId);
   },
 
   verifyAccessToken(token: string): AccessTokenClaims {
@@ -169,7 +169,7 @@ export const authService = {
     return decoded as AccessTokenClaims;
   },
 
-  refresh(refreshToken: string): LoginResponse {
+  async refresh(refreshToken: string): Promise<LoginResponse> {
     let decoded: jwt.JwtPayload | string;
 
     try {
@@ -191,21 +191,21 @@ export const authService = {
       throw new ApiError(401, 'Unauthorized', 'Invalid refresh token.', 'urn:telecom:error:invalid-token');
     }
 
-    validateRefreshTokenNotRevoked(payload.jti as string);
-    const user = getUserOrThrow(userId);
+    await validateRefreshTokenNotRevoked(payload.jti as string);
+    const user = await getUserOrThrow(userId);
 
     if (user.blocked) {
       throw new ApiError(403, 'Forbidden', 'User is blocked.', 'urn:telecom:error:user-blocked');
     }
 
-    userRepository.revokeRefreshToken({
+    await userRepository.revokeRefreshToken({
       jti: payload.jti as string,
       userId,
       exp: payload.exp ?? unixNow(),
       revokedAt: new Date().toISOString(),
     });
 
-    const permissions = userRepository.getPermissionKeysForRoles(user.roles);
+    const permissions = await userRepository.getPermissionKeysForRoles(user.roles);
     const newAccessJti = uuidv4();
     const newRefreshJti = uuidv4();
 
@@ -259,7 +259,7 @@ export const authService = {
     };
   },
 
-  logout(refreshToken: string, actorUserId: string | null, correlationId: string): void {
+  async logout(refreshToken: string, actorUserId: string | null, correlationId: string): Promise<void> {
     let decoded: jwt.JwtPayload | string;
 
     try {
@@ -280,14 +280,14 @@ export const authService = {
       throw new ApiError(401, 'Unauthorized', 'Invalid refresh token.', 'urn:telecom:error:invalid-token');
     }
 
-    userRepository.revokeRefreshToken({
+    await userRepository.revokeRefreshToken({
       jti: decoded.jti,
       userId,
       exp: decoded.exp ?? unixNow(),
       revokedAt: new Date().toISOString(),
     });
 
-    auditService.record({
+    await auditService.record({
       actorUserId: actorUserId ?? userId,
       action: AUDIT_ACTIONS.USER_LOGOUT,
       entityType: 'user',

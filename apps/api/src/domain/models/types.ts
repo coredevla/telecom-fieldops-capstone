@@ -5,6 +5,9 @@ export const AUDIT_ACTIONS = {
   USER_LOGOUT: 'AUD-02 USERLOGOUT',
   USER_BLOCKED: 'AUD-03 USERBLOCKED',
   ROLE_ASSIGNED: 'AUD-04 ROLEASSIGNED',
+  WORKORDER_CREATED: 'AUD-05 WORKORDER_CREATED',
+  WORKORDER_STATUS: 'AUD-06 WORKORDER_STATUS',
+  USER_CREATED: 'AUD-07 USERCREATED',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -13,6 +16,48 @@ export interface Role {
   id: string;
   name: string;
   permissionKeys: string[];
+}
+
+export type PlanType = 'HOME_INTERNET' | 'MOBILE_DATA' | 'VOICE' | 'TV' | 'BUSINESS';
+export type PlanCurrency = 'DOP' | 'USD';
+export type PlanCategory = 'RESIDENCIAL' | 'MOVIL' | 'EMPRESARIAL' | 'TV';
+export type PlanStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface Plan {
+  id: string;
+  name: string;
+  type: PlanType;
+  price: number;
+  currency: PlanCurrency;
+  isActive: boolean;
+  description: string;
+  category: PlanCategory;
+  status: PlanStatus;
+  monthlyPrice: number;
+  downloadSpeedMbps: number | null;
+  uploadSpeedMbps: number | null;
+  dataLimitGB: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProductCategory =
+  | 'ROUTER'
+  | 'MODEM'
+  | 'ONT'
+  | 'STB'
+  | 'ANTENNA'
+  | 'CABLE'
+  | 'PHONE'
+  | 'TABLET'
+  | 'LAPTOP'
+  | 'SIM';
+
+export interface Product {
+  id: string;
+  name: string;
+  category: ProductCategory;
+  isSerialized: boolean;
 }
 
 export interface User {
@@ -100,6 +145,72 @@ export interface LoggerContext {
   userId?: string;
   action?: string;
   [key: string]: unknown;
+}
+
+// --- Work order domain types ------------------------------------------------
+
+export type WorkOrderType =
+  | 'NEW_SERVICE_INSTALL'
+  | 'CLAIM_TROUBLESHOOT'
+  | 'PLAN_AND_EQUIPMENT_SALE'
+  | 'EQUIPMENT_ONLY_SALE'
+  | 'MONTHLY_PAYMENT'
+  | 'SERVICE_UPGRADE'
+  | 'SERVICE_DOWN_OUTAGE';
+
+export type WorkOrderStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'ELIGIBILITY_CHECK'
+  | 'INVENTORY_RESERVATION'
+  | 'ON_HOLD'
+  | 'SCHEDULED'
+  | 'IN_PROGRESS'
+  | 'VERIFICATION'
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'IN_REVIEW'
+  | 'TECH_ASSIGNMENT'
+  | 'PRODUCT_SELECTION'
+  | 'PAYMENT_CONFIRMATION'
+  | 'FULFILLMENT'
+  | 'DELIVERY'
+  | 'PAYMENT_VALIDATION'
+  | 'RECEIPT_ISSUED'
+  | 'PLAN_CHANGE'
+  | 'TRIAGE'
+  | 'FIELD_DISPATCH'
+  | 'CONFLICT'
+  | 'CANCELLED';
+
+export interface WorkOrderItem {
+  productId: string;
+  qty: number;
+}
+
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  completed: boolean;
+}
+
+export interface WorkOrder {
+  id: string;
+  type: WorkOrderType;
+  status: WorkOrderStatus;
+  customerId: string;
+  createdByUserId?: string;
+  branchId?: string;
+  planId?: string;
+  assignedTechUserId?: string;
+  version: number;
+  items?: WorkOrderItem[];
+  technicianNotes?: string | null;
+  checklist?: ChecklistItem[] | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 declare global {

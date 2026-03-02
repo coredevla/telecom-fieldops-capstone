@@ -24,12 +24,12 @@ export function authRouter() {
       const { email, password } = req.body;
       const useAuth0PasswordLogin = env.oauth.auth0.passwordGrantEnabled && env.nodeEnv !== 'test';
       const response = useAuth0PasswordLogin
-        ? authService.loginWithTrustedEmail(
+        ? await authService.loginWithTrustedEmail(
             await oauthService.authenticateWithPassword(email, password),
             'Auth0',
             req.correlationId,
           )
-        : authService.login(email, password, req.correlationId);
+        : await authService.login(email, password, req.correlationId);
 
       logger.info('User logged in', {
         correlationId: req.correlationId,
@@ -43,20 +43,20 @@ export function authRouter() {
     }
   });
 
-  router.post('/refresh', validateBody(refreshSchema), (req, res, next) => {
+  router.post('/refresh', validateBody(refreshSchema), async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
-      const response = authService.refresh(refreshToken);
+      const response = await authService.refresh(refreshToken);
       res.status(200).json(response);
     } catch (error) {
       next(error);
     }
   });
 
-  router.post('/logout', validateBody(refreshSchema), (req, res, next) => {
+  router.post('/logout', validateBody(refreshSchema), async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
-      authService.logout(refreshToken, req.user?.id ?? null, req.correlationId);
+      await authService.logout(refreshToken, req.user?.id ?? null, req.correlationId);
 
       logger.info('User logged out', {
         correlationId: req.correlationId,
