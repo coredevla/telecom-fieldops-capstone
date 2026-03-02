@@ -4,7 +4,7 @@ const config: Config = {
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
-  testSequencer: '<rootDir>/tests/testSequencer.js',
+  testSequencer: '<rootDir>/jest/testSequencer.js',
   clearMocks: true,
   verbose: false,
   setupFiles: ['dotenv/config'],

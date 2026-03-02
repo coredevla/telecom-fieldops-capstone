@@ -1,6 +1,8 @@
+import fs from 'fs';
+import path from 'path';
 import request from 'supertest';
-import app from '../src/infra/app';
-import { prisma } from '../src/infra/db/prisma/prismaClient';
+import app from '../../src/infra/app';
+import { prisma } from '../../src/infra/db/prisma/prismaClient';
 import bcrypt from 'bcryptjs';
 
 const login = async (email: string, password: string) => {
@@ -205,5 +207,40 @@ describe('RF-02 Gestión de Usuarios - Functional Tests', () => {
 });
 
 afterAll(async () => {
+  // Restore seed users and roles so the DB is usable after tests (e.g. frontend login).
+  const seedPath = path.resolve(process.cwd(), '../../scripts/seed-data.json');
+  if (fs.existsSync(seedPath)) {
+    const data = JSON.parse(fs.readFileSync(seedPath, 'utf-8')) as {
+      authRoles?: Array<{ id: string; name: string; permissionKeys: string[] }>;
+      authUsers?: Array<{ id: string; email: string; passwordHash: string; blocked: boolean; roles: string[] }>;
+    };
+    const roles = data.authRoles ?? [];
+    for (const r of roles) {
+      await prisma.role.upsert({
+        where: { id: r.id },
+        create: { id: r.id, name: r.name, permissionKeys: r.permissionKeys ?? [] },
+        update: { name: r.name, permissionKeys: r.permissionKeys ?? [] },
+      });
+    }
+    const users = data.authUsers ?? [];
+    for (const u of users) {
+      await prisma.user.upsert({
+        where: { id: u.id },
+        create: {
+          id: u.id,
+          email: u.email.trim().toLowerCase(),
+          passwordHash: u.passwordHash,
+          blocked: u.blocked ?? false,
+          roles: u.roles ?? [],
+        },
+        update: {
+          email: u.email.trim().toLowerCase(),
+          passwordHash: u.passwordHash,
+          blocked: u.blocked ?? false,
+          roles: u.roles ?? [],
+        },
+      });
+    }
+  }
   await prisma.$disconnect();
 });
