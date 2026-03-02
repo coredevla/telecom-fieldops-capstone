@@ -10,7 +10,7 @@
     "prestart": "npm run build",
     "start": "node dist/main.js",
     "release": "npx prisma migrate deploy",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "migrate": "npx prisma migrate deploy",
     "migrate:diff": "npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script",
     "openapi:validate": "node ../../scripts/validate-openapi.js src/openapi/openapi.yaml",
